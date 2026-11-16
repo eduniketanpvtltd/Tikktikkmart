@@ -1,0 +1,16 @@
+{
+  "name": "Tikk Tikk Mart — Last Minute Saver",
+  "short_name": "TikkTikkMart",
+  "description": "10–15 minute hyperlocal grocery & essentials delivery. Last Minute Saver.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f66002",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
