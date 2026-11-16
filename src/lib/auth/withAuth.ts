@@ -21,24 +21,74 @@ async function resolveUserFromToken(token: string): Promise<AppUser | { error: s
     return { error: "email not verified", status: 401 };
   }
   const email = decoded.email.toLowerCase();
+  const isSuperAdmin = superAdminEmails().includes(email);
 
+  // 1. Look up by firebase_uid
   let { data: user } = await db.from("users").select("*").eq("firebase_uid", decoded.uid).maybeSingle();
+
+  // 2. If not found by firebase_uid, check by email (handles pre-seeded or pre-existing accounts)
   if (!user) {
-    const role: Role = superAdminEmails().includes(email) ? "super_admin" : "customer";
+    const { data: userByEmail } = await db.from("users").select("*").eq("email", email).maybeSingle();
+    if (userByEmail) {
+      const updatePayload: Record<string, unknown> = {
+        firebase_uid: decoded.uid,
+        name: decoded.name ?? userByEmail.name,
+        photo_url: decoded.picture ?? userByEmail.photo_url,
+      };
+      if (isSuperAdmin && userByEmail.role !== "super_admin") {
+        updatePayload.role = "super_admin";
+      }
+      const { data: updated } = await db
+        .from("users")
+        .update(updatePayload)
+        .eq("id", userByEmail.id)
+        .select()
+        .maybeSingle();
+
+      user = updated || userByEmail;
+    }
+  }
+
+  // 3. If still not found, insert with upsert and race-condition fallback
+  if (!user) {
+    const role: Role = isSuperAdmin ? "super_admin" : "customer";
     const ins = await db
       .from("users")
-      .insert({
-        firebase_uid: decoded.uid,
-        email,
-        name: decoded.name ?? null,
-        photo_url: decoded.picture ?? null,
-        role,
-      })
+      .upsert(
+        {
+          firebase_uid: decoded.uid,
+          email,
+          name: decoded.name ?? null,
+          photo_url: decoded.picture ?? null,
+          role,
+        },
+        { onConflict: "firebase_uid" }
+      )
       .select()
-      .single();
-    if (ins.error) return { error: ins.error.message, status: 500 };
-    user = ins.data;
+      .maybeSingle();
+
+    if (ins.error) {
+      // Race condition safety: retry fetching by firebase_uid or email in case concurrent request inserted it
+      const { data: retryUser } = await db
+        .from("users")
+        .select("*")
+        .or(`firebase_uid.eq.${decoded.uid},email.eq.${email}`)
+        .maybeSingle();
+
+      if (retryUser) {
+        user = retryUser;
+      } else {
+        return { error: ins.error.message, status: 500 };
+      }
+    } else {
+      user = ins.data;
+    }
   }
+
+  if (!user) {
+    return { error: "failed to resolve user session", status: 500 };
+  }
+
   if (user.is_blocked) return { error: "account blocked", status: 403 };
   return user as AppUser;
 }

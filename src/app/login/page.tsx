@@ -14,15 +14,26 @@ export default function LoginPage() {
     try {
       const cred = await signInWithGoogle();
       const token = await cred.user.getIdToken();
-      const res = await fetch("/api/auth/session", {
+      let res = await fetch("/api/auth/session", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const json = await res.json();
+      let json = await res.json();
+      
+      // Resilient 1-time retry if concurrent auth session sync was processing
+      if (!json?.ok) {
+        await new Promise((r) => setTimeout(r, 400));
+        res = await fetch("/api/auth/session", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        json = await res.json();
+      }
+
       if (json?.ok) {
         window.location.href = "/";
       } else {
-        setError(json?.error || "Login verification failed");
+        setError(json?.error || "Login verification failed. Please try again.");
         setLoading(false);
       }
     } catch (e: any) {
