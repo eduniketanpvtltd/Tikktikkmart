@@ -1,0 +1,162 @@
+.ttm-splash {
+  --splash-gold: #ffc861;
+  --splash-ring-size: 208px;
+  --splash-tick-radius: 88px;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow: hidden;
+  background: #0e1630;
+  color: #fff;
+  transition: opacity 210ms ease-out;
+}
+
+.ttm-splash[data-phase="leaving"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ttm-splash-glow {
+  position: absolute;
+  bottom: -18%;
+  left: 50%;
+  width: min(135%, 840px);
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, rgb(253 94 0 / 38%), rgb(253 94 0 / 10%) 38%, transparent 65%);
+  animation: ttm-splash-glow-in 1.6s .1s ease-out both;
+}
+
+.ttm-splash-stage {
+  position: absolute;
+  inset: 44% 0 auto;
+  display: grid;
+  justify-items: center;
+  transform: translateY(-50%);
+}
+
+.ttm-splash-ring {
+  position: relative;
+  width: var(--splash-ring-size);
+  height: var(--splash-ring-size);
+}
+
+.ttm-splash-tick {
+  position: absolute;
+  top: calc(50% - 5.5px);
+  left: calc(50% - 1.5px);
+  width: 3px;
+  height: 11px;
+  transform: rotate(var(--splash-angle)) translateY(calc(-1 * var(--splash-tick-radius)));
+  border-radius: 2px;
+  background: rgb(255 255 255 / 16%);
+  animation: ttm-splash-glow-in .32s .36s ease-out both;
+}
+
+.ttm-splash-tick::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--splash-gold);
+  content: "";
+  animation: ttm-splash-tick-in .16s var(--splash-tick-delay) ease-out both;
+}
+
+.ttm-splash-tile {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 112px;
+  height: 112px;
+  margin: -56px 0 0 -56px;
+  padding: 6px;
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgb(0 0 0 / 40%);
+  animation: ttm-splash-tile-in .68s .15s cubic-bezier(.2,.9,.3,1) both;
+}
+
+.ttm-splash-logo,
+.ttm-splash-flying-logo {
+  display: block;
+  border-radius: 22px;
+  object-fit: contain;
+}
+
+.ttm-splash-logo { width: 100%; height: 100%; }
+
+.ttm-splash[data-phase="leaving"] .ttm-splash-tile {
+  visibility: hidden;
+}
+
+.ttm-splash-flying-logo {
+  position: fixed;
+  z-index: 101;
+  pointer-events: none;
+  transform-origin: top left;
+}
+
+.customer-logo-tile[data-splash-docking] { visibility: hidden; }
+
+.ttm-splash-wordmark {
+  margin-top: 26px;
+  text-align: center;
+  animation: ttm-splash-wordmark-in .65s .68s cubic-bezier(.2,.9,.3,1) both;
+}
+
+.ttm-splash-wordmark p {
+  font-size: clamp(25px, 7vw, 31px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -.025em;
+}
+
+.ttm-splash-wordmark strong { color: var(--splash-gold); }
+
+.ttm-splash-wordmark > span {
+  display: block;
+  margin: 12px 0 0;
+  color: rgb(255 255 255 / 62%);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+}
+
+.ttm-splash-status {
+  position: absolute;
+  inset: auto 10px calc(54px + env(safe-area-inset-bottom, 0px));
+  height: 24px;
+  text-align: center;
+  color: rgb(255 255 255 / 74%);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.ttm-splash-status span {
+  position: absolute;
+  inset: 0;
+  animation: ttm-splash-message .44s var(--splash-message-delay) ease-out both;
+}
+
+.ttm-splash-skip { position: absolute; inset: 0; cursor: pointer; }
+.ttm-splash-skip:focus-visible { outline: 2px solid var(--splash-gold); outline-offset: -4px; }
+
+@keyframes ttm-splash-glow-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ttm-splash-tick-in { from { opacity: 0; } to { opacity: 1; transform: scaleY(1.36); } }
+@keyframes ttm-splash-tile-in { from { opacity: 0; transform: scale(.87); } to { opacity: 1; transform: scale(1); } }
+@keyframes ttm-splash-wordmark-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes ttm-splash-message {
+  0% { opacity: 0; transform: translateY(6px); }
+  22%, 78% { opacity: 1; transform: none; }
+  100% { opacity: 0; }
+}
+
+@media (max-height: 465px) {
+  .ttm-splash { --splash-ring-size: 164px; --splash-tick-radius: 72px; }
+  .ttm-splash-wordmark { margin-top: 14px; }
+  .ttm-splash-status { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ttm-splash, .ttm-splash-flying-logo { display: none; }
+}
