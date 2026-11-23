@@ -21,6 +21,9 @@ export const POST = withAuth(["rider", "admin"], async (req, { user, params }) =
     .maybeSingle();
 
   if (!offer) return fail("Offer not found or already handled", 404);
+  if (Date.parse(offer.offered_at) + 30_000 <= Date.now()) {
+    return fail("This delivery offer has expired", 409);
+  }
 
   if (parsed.data.action === "reject") {
     await db

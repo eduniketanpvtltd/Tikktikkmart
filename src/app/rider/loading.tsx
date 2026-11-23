@@ -1,5 +1,5 @@
-import { LayoutSkeleton } from "@/components/ui/LayoutSkeleton";
+import { RiderHomeSkeleton } from "./RiderHomeSkeleton";
 
 export default function Loading() {
-  return <LayoutSkeleton shape="order" label="Loading rider board" />;
+  return <RiderHomeSkeleton />;
 }

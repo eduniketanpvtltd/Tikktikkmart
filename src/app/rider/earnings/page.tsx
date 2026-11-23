@@ -8,12 +8,13 @@ import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/components/providers/AppProviders";
 
 export default function RiderEarningsPage() {
-  const { user } = useAuth();
-  const { data, isLoading } = useQuery({
+  const { user, loading: authLoading } = useAuth();
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ["rider-earnings", user?.id],
     enabled: Boolean(user),
-    queryFn: async () => {
-      const res = await apiFetch<any>("/api/rider/earnings");
+    refetchOnMount: true,
+    queryFn: async ({ signal }) => {
+      const res = await apiFetch<any>("/api/rider/earnings", { signal });
       return res.data;
     },
   });
@@ -27,8 +28,17 @@ export default function RiderEarningsPage() {
 
         <h1 className="text-xl font-extrabold">Earnings & COD Balance</h1>
 
-        {isLoading ? (
+        {authLoading || isLoading ? (
           <LayoutSkeleton shape="metrics" label="Loading earnings" />
+        ) : !user ? (
+          <Link href="/login" className="inline-flex min-h-11 items-center font-semibold underline">Sign in to view earnings</Link>
+        ) : isError && !data ? (
+          <div role="status" className="space-y-2 rounded-2xl bg-white p-4">
+            <p>Couldn’t load earnings.</p>
+            <button type="button" className="min-h-11 font-semibold underline" disabled={isFetching} onClick={() => void refetch()}>
+              {isFetching ? "Retrying…" : "Retry"}
+            </button>
+          </div>
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3 min-[390px]:grid-cols-3">
