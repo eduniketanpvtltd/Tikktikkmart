@@ -1,9 +1,11 @@
 "use client";
+import { LayoutSkeleton } from "@/components/ui/LayoutSkeleton";
 import React, { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Minus, Plus } from "lucide-react";
+import { useOptimisticMutation } from "@/lib/ui/useOptimisticMutation";
 import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/components/providers/AppProviders";
 
@@ -13,6 +15,7 @@ function InventoryTable() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const mutation = useOptimisticMutation();
 
   const { data: stores = [] } = useQuery({
     queryKey: ["store-me-inv", user?.id],
@@ -34,20 +37,21 @@ function InventoryTable() {
     },
   });
 
-  const adjustQty = async (variantId: string, nextQty: number) => {
-    await apiFetch("/api/store/inventory", {
+  const updateInventory = async (variantId: string, patch: { quantity?: number; is_available: boolean }) => {
+    const queryKey = ["store-inventory", storeId];
+    await mutation.run(variantId, async () => {
+      await qc.cancelQueries({ queryKey });
+      const previous = qc.getQueryData<typeof rows>(queryKey)?.find((row) => row.variant_id === variantId);
+      qc.setQueryData<typeof rows>(queryKey, (current) => current?.map((row) =>
+        row.variant_id === variantId ? { ...row, ...patch } : row));
+      return () => {
+        if (previous) qc.setQueryData<typeof rows>(queryKey, (current) => current?.map((row) =>
+          row.variant_id === variantId ? previous : row));
+      };
+    }, () => apiFetch("/api/store/inventory", {
       method: "PATCH",
-      body: JSON.stringify({ storeId, variantId, quantity: Math.max(0, nextQty), is_available: nextQty > 0 }),
-    });
-    qc.invalidateQueries({ queryKey: ["store-inventory", storeId] });
-  };
-
-  const toggleAvail = async (variantId: string, isAvailable: boolean) => {
-    await apiFetch("/api/store/inventory", {
-      method: "PATCH",
-      body: JSON.stringify({ storeId, variantId, is_available: !isAvailable }),
-    });
-    qc.invalidateQueries({ queryKey: ["store-inventory", storeId] });
+      body: JSON.stringify({ storeId, variantId, ...patch }),
+    }));
   };
 
   const filtered = rows.filter(
@@ -59,7 +63,7 @@ function InventoryTable() {
   return (
     <div className="min-h-screen bg-gray-50 p-5">
       <div className="max-w-5xl mx-auto space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Link href="/store" className="inline-flex items-center gap-1.5 text-sm font-bold text-gray-700">
             <ArrowLeft className="w-4 h-4" /> Back to Live Board
           </Link>
@@ -68,16 +72,16 @@ function InventoryTable() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filter by product or SKU..."
-            className="border rounded-xl px-3 py-2 text-sm bg-white w-64"
+            className="border rounded-xl px-3 py-2 text-sm bg-white w-full min-w-0 sm:w-64"
           />
         </div>
 
         <h1 className="text-xl font-extrabold">Store Inventory</h1>
 
         {isLoading ? (
-          <p className="text-sm text-gray-500">Loading inventory...</p>
+          <LayoutSkeleton shape="table" label="Loading inventory" />
         ) : (
-          <div className="bg-white rounded-2xl border overflow-x-auto">
+          <div className="layout-table bg-white rounded-2xl border">
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 text-xs uppercase text-gray-500 border-b">
                 <tr>
@@ -101,7 +105,8 @@ function InventoryTable() {
                       <div className="inline-flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => adjustQty(r.variant_id, r.quantity - 1)}
+                          disabled={mutation.pending.has(r.variant_id) || r.quantity <= 0}
+                          onClick={() => updateInventory(r.variant_id, { quantity: r.quantity - 1, is_available: r.quantity > 1 })}
                           className="p-1 rounded border hover:bg-gray-100"
                         >
                           <Minus className="w-3 h-3" />
@@ -109,7 +114,8 @@ function InventoryTable() {
                         <span className="font-bold w-8 text-center">{r.quantity}</span>
                         <button
                           type="button"
-                          onClick={() => adjustQty(r.variant_id, r.quantity + 1)}
+                          disabled={mutation.pending.has(r.variant_id)}
+                          onClick={() => updateInventory(r.variant_id, { quantity: r.quantity + 1, is_available: true })}
                           className="p-1 rounded border hover:bg-gray-100"
                         >
                           <Plus className="w-3 h-3" />
@@ -120,7 +126,8 @@ function InventoryTable() {
                     <td className="px-4 py-3">
                       <button
                         type="button"
-                        onClick={() => toggleAvail(r.variant_id, r.is_available)}
+                        disabled={mutation.pending.has(r.variant_id)}
+                        onClick={() => updateInventory(r.variant_id, { is_available: !r.is_available })}
                         className={`px-2.5 py-1 rounded-full text-xs font-bold ${
                           r.is_available ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
                         }`}

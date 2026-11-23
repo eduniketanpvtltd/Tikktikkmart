@@ -1,8 +1,10 @@
 "use client";
 import React, { useState } from "react";
 import Link from "next/link";
+import { AccountCommandShortcut } from "@/components/ui/CommandMenu";
 import { ArrowLeft, Sparkles, Zap, ShieldCheck } from "lucide-react";
 import { signInWithGoogle } from "@/lib/firebase/client";
+import { withRequestKey } from "@/lib/api/idempotency";
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
@@ -14,9 +16,10 @@ export default function LoginPage() {
     try {
       const cred = await signInWithGoogle();
       const token = await cred.user.getIdToken();
+      const headers = withRequestKey(new Headers({ Authorization: `Bearer ${token}` }), "POST");
       let res = await fetch("/api/auth/session", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers,
       });
       let json = await res.json();
       
@@ -25,13 +28,14 @@ export default function LoginPage() {
         await new Promise((r) => setTimeout(r, 400));
         res = await fetch("/api/auth/session", {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers,
         });
         json = await res.json();
       }
 
       if (json?.ok) {
-        window.location.href = "/";
+        const next = new URLSearchParams(window.location.search).get("next");
+        window.location.href = next && /^\/orders\/[0-9a-f-]{36}$/i.test(next) ? next : "/";
       } else {
         setError(json?.error || "Login verification failed. Please try again.");
         setLoading(false);
@@ -57,14 +61,9 @@ export default function LoginPage() {
         {/* Brand Header with Logo */}
         <div className="text-center space-y-2">
           <div className="flex flex-col items-center justify-center select-none mb-1">
-            <img
-              src="/logo.png"
-              alt="TIKK TIKK MART"
-              width={80}
-              height={80}
-              style={{ width: "80px", height: "80px" }}
-              className="w-20 h-20 rounded-2xl shadow-md object-contain mb-2 hover:scale-105 transition-transform"
-            />
+            <span className="media-frame block shrink-0 size-20 rounded-2xl shadow-md mb-2 hover:scale-105 transition-transform">
+              <img src="/logo.png" alt="TIKK TIKK MART" width={80} height={80} className="media-content media-content--contain" />
+            </span>
             <h1 className="font-black text-2xl tracking-tighter text-[#13193b]">
               TIKK TIKK <span className="text-[#f66002]">MART</span>
             </h1>
@@ -109,7 +108,7 @@ export default function LoginPage() {
         >
           {loading ? (
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full border-2 border-[#f66002] border-t-transparent animate-spin" />
+              <span className="layout-busy-marker" aria-hidden="true" />
               <span>Signing in...</span>
             </div>
           ) : (
@@ -146,7 +145,8 @@ export default function LoginPage() {
       <div className="max-w-md w-full mx-auto text-center text-xs text-gray-600 py-4 flex items-center justify-center gap-1.5 font-medium">
         <ShieldCheck className="w-4 h-4 text-[#f66002]" />
         <span>100% Secure Authentication via Google OAuth</span>
-      </div>
+        <AccountCommandShortcut />
+    </div>
     </main>
   );
 }

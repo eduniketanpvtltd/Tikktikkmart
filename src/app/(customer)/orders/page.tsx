@@ -1,171 +1,162 @@
 "use client";
-import React from "react";
+
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Package, RotateCcw, Zap } from "lucide-react";
+import { ArrowLeft, ArrowRight, Package } from "lucide-react";
+import { formatRupees } from "@/components/customer/AnimatedRupees";
+import { LayoutSkeleton } from "@/components/ui/LayoutSkeleton";
 import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/components/providers/AppProviders";
+import type { OrderStatus, PaymentMethod } from "@/types/db";
+
+type OrderSummary = {
+  id: string;
+  order_no: number;
+  status: OrderStatus;
+  placed_at: string;
+  grand_total: number;
+  payment_method: PaymentMethod;
+  store: { name: string } | null;
+  items: { name_snapshot: string | null; quantity: number }[];
+};
+
+const statuses: Record<OrderStatus, { label: string; tone: "active" | "waiting" | "complete" | "closed" }> = {
+  placed: { label: "Placed", tone: "active" },
+  payment_pending: { label: "Payment pending", tone: "waiting" },
+  confirmed: { label: "Confirmed", tone: "active" },
+  accepted_by_store: { label: "Preparing", tone: "active" },
+  picking: { label: "Packing", tone: "active" },
+  packed: { label: "Packed", tone: "active" },
+  rider_assigned: { label: "Rider assigned", tone: "active" },
+  rider_at_store: { label: "At pickup", tone: "active" },
+  picked_up: { label: "Picked up", tone: "active" },
+  out_for_delivery: { label: "Out for delivery", tone: "active" },
+  arrived: { label: "Rider arrived", tone: "active" },
+  delivered: { label: "Delivered", tone: "complete" },
+  cancelled: { label: "Cancelled", tone: "closed" },
+  rejected_by_store: { label: "Declined by store", tone: "closed" },
+  payment_failed: { label: "Payment failed", tone: "closed" },
+  delivery_failed: { label: "Delivery failed", tone: "closed" },
+  refunded: { label: "Refunded", tone: "complete" },
+};
+
+const statusColors = {
+  active: "bg-[var(--peach-light)] text-[color:var(--theme-orange-text)]",
+  waiting: "bg-[var(--theme-warning-bg)] text-[color:var(--theme-warning)]",
+  complete: "bg-[var(--theme-success-bg)] text-[color:var(--theme-success)]",
+  closed: "bg-[var(--theme-danger-bg)] text-[color:var(--theme-danger)]",
+};
+
+const orderDate = new Intl.DateTimeFormat("en-IN", {
+  day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata",
+});
+
+const primaryAction = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--theme-orange-fill)] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[var(--theme-orange-hover)]";
+const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--theme-orange-text)]";
+
+function OrderCard({ order }: { order: OrderSummary }) {
+  const { label, tone } = statuses[order.status];
+  const trackable = tone === "active";
+  const date = new Date(order.placed_at);
+  const count = order.items.reduce((sum, item) => sum + item.quantity, 0);
+  const names = [...new Set(order.items.flatMap((item) => item.name_snapshot ? [item.name_snapshot] : []))];
+  const namesPreview = names.slice(0, 3).join(", ");
+  const more = names.length - 3;
+  const titleId = `order-heading-${order.id}`;
+
+  return (
+    <article aria-labelledby={titleId} className="rounded-[18px] border border-[color:var(--theme-line)] bg-[var(--white)]">
+      <div className="p-4 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <h2 id={titleId} className="min-w-0 break-words text-base font-extrabold leading-tight tabular-nums">Order #{order.order_no}</h2>
+          <span className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${statusColors[tone]}`}>
+            {trackable && <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />}
+            {label}
+          </span>
+        </div>
+        <p className="mt-1.5 break-words text-sm leading-snug text-[color:var(--theme-muted)]">{order.store?.name ?? "Tikk Tikk Mart"}</p>
+        {Number.isFinite(date.getTime()) && (
+          <time dateTime={order.placed_at} className="mt-0.5 block text-xs leading-snug text-[color:var(--theme-muted)]">{orderDate.format(date)}</time>
+        )}
+
+        <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-t border-[color:var(--theme-line)] pt-3.5">
+          <div className="min-w-0">
+            <p className="text-sm font-bold">{count} {count === 1 ? "item" : "items"}</p>
+            {!!names.length && (
+              <p className="mt-0.5 line-clamp-2 break-words text-xs leading-relaxed text-[color:var(--theme-muted)]">
+                {namesPreview}{more > 0 ? ` +${more} more` : ""}
+              </p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-extrabold leading-tight tabular-nums">{formatRupees(Number(order.grand_total))}</p>
+            <p className="mt-0.5 text-xs leading-snug text-[color:var(--theme-muted)]">
+              {order.payment_method === "cod" ? "Cash on delivery" : "Online payment"}
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[color:var(--theme-line)] px-4 py-3 sm:px-5">
+        <Link href={`/orders/${order.id}`} aria-describedby={titleId}
+          className={`${focusRing} ${trackable ? primaryAction : "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[color:var(--theme-line)] px-4 py-2 text-sm font-bold hover:bg-[var(--peach-light)]"} flex-1`}>
+          {trackable ? "Track delivery" : "View order details"} <ArrowRight size={16} aria-hidden="true" className="shrink-0" />
+        </Link>
+        <Link href="/" className={`${focusRing} inline-flex min-h-11 shrink-0 items-center rounded-lg px-2 text-sm font-bold text-[color:var(--theme-orange-text)] hover:underline`}>
+          Shop again
+        </Link>
+      </div>
+    </article>
+  );
+}
 
 export default function OrdersListPage() {
-  const { user } = useAuth();
-  const { data: orders = [], isLoading } = useQuery({
+  const { user, loading } = useAuth();
+  const orders = useQuery({
     queryKey: ["my-orders", user?.id],
     enabled: Boolean(user),
-    queryFn: async () => {
-      const res = await apiFetch<any[]>("/api/orders");
+    queryFn: async ({ signal }) => {
+      const res = await apiFetch<OrderSummary[]>("/api/orders", { signal });
       return res.data ?? [];
     },
   });
 
-  if (!user) {
-    return (
-      <div className="max-w-md mx-auto my-12 bg-white rounded-3xl border border-gray-100 p-8 text-center space-y-4 shadow-sm">
-        <div className="w-16 h-16 rounded-full bg-[#fff0e6] text-[#f66002] flex items-center justify-center mx-auto text-2xl font-black">
-          📦
-        </div>
-        <h1 className="font-black text-lg text-gray-900">Sign in to view your orders</h1>
-        <p className="text-xs text-gray-500">
-          Track active deliveries in real-time and review previous purchases.
-        </p>
-        <Link
-          href="/login"
-          className="inline-block w-full py-3.5 rounded-2xl bg-[#f66002] hover:bg-[#dd5500] text-white font-black text-xs uppercase tracking-wider transition-colors shadow-sm"
-        >
-          Login
-        </Link>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
-      {/* Top Header */}
-      <div className="flex items-center gap-3">
-        <Link
-          href="/"
-          className="p-2 rounded-xl bg-white border border-gray-100 hover:bg-gray-50 text-gray-700 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
+    <div className="mx-auto max-w-2xl space-y-5 text-[color:var(--theme-ink)]">
+      <header className="flex items-center gap-3">
+        <Link href="/" aria-label="Back to Home"
+          className={`${focusRing} grid size-11 shrink-0 place-items-center rounded-xl border border-[color:var(--theme-line)] bg-[var(--white)] hover:bg-[var(--peach-light)]`}>
+          <ArrowLeft size={19} aria-hidden="true" />
         </Link>
-        <div>
-          <h1 className="text-lg sm:text-xl font-black text-gray-900 leading-tight">
-            My Orders
-          </h1>
-          <p className="text-[11px] text-gray-500 font-medium">
-            Past grocery purchases and active 10-min deliveries
-          </p>
+        <div className="min-w-0">
+          <h1 className="text-xl font-extrabold leading-tight tracking-tight sm:text-2xl">My Orders</h1>
+          <p className="mt-0.5 text-sm leading-snug text-[color:var(--theme-muted)]">Track deliveries and view past orders</p>
         </div>
-      </div>
+      </header>
 
-      {isLoading ? (
-        <div className="py-12 text-center text-xs text-gray-400 font-bold uppercase tracking-wider">
-          Loading order history...
-        </div>
-      ) : orders.length === 0 ? (
-        <div className="bg-white rounded-3xl border border-gray-100 p-12 text-center space-y-3 shadow-sm">
-          <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mx-auto text-3xl">
-            🛒
-          </div>
-          <h2 className="font-black text-base text-gray-800">No orders placed yet</h2>
-          <p className="text-xs text-gray-500 max-w-xs mx-auto">
-            Order fresh groceries, snacks and household essentials in minutes.
+      {loading || orders.isLoading ? (
+        <LayoutSkeleton shape="list" label="Loading order history" />
+      ) : !user || !orders.data?.length ? (
+        <section className="space-y-3 rounded-[18px] border border-[color:var(--theme-line)] bg-[var(--white)] px-5 py-9 text-center">
+          <span className="mx-auto grid size-12 place-items-center rounded-xl bg-[var(--peach-light)] text-[color:var(--theme-orange-text)]">
+            <Package size={23} aria-hidden="true" />
+          </span>
+          <h2 className="text-base font-extrabold">
+            {!user ? "Sign in to view your orders" : orders.isError ? "Orders couldn’t load" : "No orders yet"}
+          </h2>
+          <p className="text-sm text-[color:var(--theme-muted)]">
+            {!user ? "Track deliveries from the account you ordered with."
+              : orders.isError ? "Try loading your order history again." : "Your orders will appear here after checkout."}
           </p>
-          <Link
-            href="/"
-            className="inline-block px-5 py-3 rounded-2xl bg-[#f66002] hover:bg-[#dd5500] text-white text-xs font-black uppercase tracking-wider transition-colors shadow-sm"
-          >
-            Start Shopping
-          </Link>
-        </div>
+          {user && orders.isError ? (
+            <button type="button" onClick={() => void orders.refetch()} className={`${primaryAction} ${focusRing}`}>Try again</button>
+          ) : (
+            <Link href={user ? "/" : "/login"} className={`${primaryAction} ${focusRing}`}>{user ? "Start shopping" : "Sign in"}</Link>
+          )}
+        </section>
       ) : (
-        <div className="space-y-3">
-          {orders.map((o) => {
-            const isDelivered = o.status === "delivered";
-            const isCancelled = o.status === "cancelled";
-            const isActive = !isDelivered && !isCancelled;
-
-            return (
-              <div
-                key={o.id}
-                className="bg-white rounded-3xl border border-gray-100 p-4 sm:p-5 space-y-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:border-gray-200 transition-all"
-              >
-                {/* Status + Order # */}
-                <div className="flex items-start justify-between gap-2 border-b border-gray-100 pb-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-sm text-gray-900">
-                        Order #{o.order_no}
-                      </span>
-                      {isActive && (
-                        <span className="flex items-center gap-1 bg-[#fff0e6] text-[#f66002] text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
-                          <Zap className="w-2.5 h-2.5 fill-[#f66002]" /> LIVE
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-gray-500 mt-0.5">
-                      {o.store?.name ?? "Dark Store"} · {new Date(o.placed_at).toLocaleDateString([], { month: "short", day: "numeric" })} at {new Date(o.placed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </p>
-                  </div>
-
-                  <span
-                    className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider ${
-                      isDelivered
-                        ? "bg-[#fff0e6] text-[#f66002]"
-                        : isCancelled
-                        ? "bg-red-50 text-red-600"
-                        : "bg-[#13193b] text-[#ffd269]"
-                    }`}
-                  >
-                    {o.status.replaceAll("_", " ")}
-                  </span>
-                </div>
-
-                {/* Items Summary preview */}
-                <div className="flex items-center justify-between text-xs text-gray-700">
-                  <div className="space-y-0.5">
-                    <p className="font-bold text-gray-900">
-                      {o.items?.length ?? 0} {o.items?.length === 1 ? "item" : "items"}
-                    </p>
-                    <p className="text-[11px] text-gray-500 truncate max-w-[220px] sm:max-w-sm">
-                      {(o.items ?? []).map((it: any) => it.name_snapshot).join(", ")}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-black text-sm sm:text-base text-gray-900">
-                      ₹{o.grand_total}
-                    </p>
-                    <p className="text-[10px] text-gray-400 uppercase font-mono">
-                      {o.payment_method}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Actions Bar */}
-                <div className="pt-2 border-t border-gray-50 flex items-center justify-between gap-2">
-                  <Link
-                    href={`/orders/${o.id}`}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-colors ${
-                      isActive
-                        ? "bg-[#f66002] hover:bg-[#dd5500] text-white shadow-sm"
-                        : "bg-gray-100 hover:bg-gray-200 text-gray-800"
-                    }`}
-                  >
-                    <span>{isActive ? "Track Delivery ⚡" : "View Order Details"}</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-
-                  <Link
-                    href="/"
-                    className="p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-600 hover:text-black transition-colors"
-                    title="Shop again"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <ul aria-label="Order history" className="space-y-3">
+          {orders.data.map((order) => <li key={order.id}><OrderCard order={order} /></li>)}
+        </ul>
       )}
     </div>
   );

@@ -22,6 +22,7 @@ export const GET = withAuth(null, async (_req, { user }) => {
       .maybeSingle(),
   ]);
 
+  if (activeOrder) delete activeOrder.delivery_otp;
   return ok({ user, profile, activeOrder, pendingOffer });
 });
 

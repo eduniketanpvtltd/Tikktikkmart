@@ -61,6 +61,8 @@ export interface Product {
   gst_rate: number;
   is_active: boolean;
   variants?: ProductVariant[];
+  rating?: number | null;
+  review_count?: number | null;
 }
 
 export interface Store {

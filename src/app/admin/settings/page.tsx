@@ -25,9 +25,9 @@ export default function AdminSettingsPage() {
     <div className="space-y-6">
       <h1 className="text-xl font-extrabold">Users, Roles & Audit Logs</h1>
 
-      <div className="bg-white rounded-2xl border p-4 space-y-2">
-        <h2 className="font-bold text-sm">Users ({data?.users?.length ?? 0})</h2>
-        <div className="overflow-x-auto">
+      <div className="layout-table-section rounded-2xl border bg-white">
+        <h2 className="px-4 py-3 font-bold text-sm">Users ({data?.users?.length ?? 0})</h2>
+        <div className="layout-table">
           <table className="w-full text-xs text-left">
             <thead className="bg-gray-50 text-gray-500 uppercase border-b">
               <tr>
@@ -69,8 +69,8 @@ export default function AdminSettingsPage() {
         <h2 className="font-bold text-sm">Recent Audit Logs</h2>
         <div className="divide-y text-xs">
           {(data?.auditLogs ?? []).map((log: any) => (
-            <div key={log.id} className="py-2 flex items-center justify-between">
-              <span>
+            <div key={log.id} className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 py-2">
+              <span className="layout-wrap">
                 <strong className="uppercase">{log.action}</strong> on <code>{log.entity}</code> ({log.entity_id})
               </span>
               <span className="text-gray-400">{new Date(log.created_at).toLocaleString()}</span>

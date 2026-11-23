@@ -2,60 +2,58 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Grid, Search, Package, User } from "lucide-react";
+import { Home, Search, Package, User } from "lucide-react";
 import { useAuth } from "@/components/providers/AppProviders";
+import { AccountAvatar } from "@/components/customer/AccountAvatar";
 
 export function MobileNav() {
   const pathname = usePathname();
   const { user } = useAuth();
+  if (pathname === "/cart" || pathname.startsWith("/product/") || pathname.startsWith("/orders/")) return null;
 
   const NAV_ITEMS = [
     { label: "Home", href: "/", icon: Home },
-    { label: "Categories", href: "/category/vegetables-fruits", icon: Grid },
     { label: "Search", href: "/search", icon: Search },
     { label: "Orders", href: "/orders", icon: Package },
     { label: "Account", href: user ? "/profile" : "/login", icon: User },
   ];
 
   return (
-    <nav className="sm:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-gray-200 shadow-[0_-4px_12px_rgba(19,25,59,0.05)] pb-safe">
-      <div className="grid grid-cols-5 h-14">
+    <nav aria-label="Main navigation" className="sm:hidden fixed bottom-0 inset-x-0 z-30 bg-[var(--white)] border-t border-[color:var(--theme-line)] shadow-[0_-4px_12px_var(--theme-shadow)] pb-safe">
+      <div className="grid h-[var(--customer-nav-height)] grid-cols-4">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const isActive =
-            item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          const isActive = pathname === item.href;
+          const icon = (
+            <Icon
+              aria-hidden="true"
+              className={`size-[18px] ${isActive ? "stroke-[2.25]" : "stroke-[1.8]"}`}
+            />
+          );
 
           return (
             <Link
               key={item.label}
               href={item.href}
-              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-colors select-none ${
+              aria-current={isActive ? "page" : undefined}
+              className={`mobile-nav-item flex flex-col items-center justify-center gap-[3px] text-[10px] font-bold transition-colors select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--theme-orange-text)] ${
                 isActive
-                  ? "text-[#f66002]"
-                  : "text-gray-500 hover:text-gray-900"
+                  ? "text-[color:var(--theme-orange-text)]"
+                  : "text-[color:var(--theme-muted)] hover:text-[color:var(--theme-ink)]"
               }`}
             >
-              <div className="relative">
-                {item.label === "Account" && user?.photo_url ? (
-                  <div
-                    className={`w-5 h-5 rounded-full overflow-hidden border ${
+              <div className="mobile-nav-icon">
+                {item.label === "Account" ? (
+                  <AccountAvatar
+                    src={user?.photo_url}
+                    className={`size-[18px] rounded-full border ${
                       isActive
-                        ? "border-[#f66002] ring-2 ring-[#f66002]/30 scale-110"
-                        : "border-gray-300"
+                        ? "border-[color:var(--border-orange)]"
+                        : "border-[color:var(--theme-line)]"
                     }`}
-                  >
-                    <img src={user.photo_url} alt="Profile" className="w-full h-full object-cover" />
-                  </div>
-                ) : (
-                  <Icon
-                    className={`w-5 h-5 transition-transform duration-150 ${
-                      isActive ? "stroke-[2.5] scale-110" : "stroke-[1.8]"
-                    }`}
+                    fallback={icon}
                   />
-                )}
-                {item.label === "Orders" && (
-                  <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[#f66002]" />
-                )}
+                ) : icon}
               </div>
               <span className="tracking-tight leading-none">{item.label}</span>
             </Link>

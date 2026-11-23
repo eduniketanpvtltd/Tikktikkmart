@@ -1,4 +1,5 @@
 "use client";
+import { LayoutSkeleton } from "@/components/ui/LayoutSkeleton";
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
@@ -13,7 +14,7 @@ export default function AdminDashboardPage() {
     },
   });
 
-  if (isLoading) return <p className="text-sm text-gray-500">Loading KPIs...</p>;
+  if (isLoading) return <LayoutSkeleton shape="metrics" label="Loading metrics" />;
 
   const cards = [
     { label: "Orders Today", value: data?.ordersToday ?? 0 },
@@ -32,14 +33,14 @@ export default function AdminDashboardPage() {
         {cards.map((c) => (
           <div key={c.label} className="bg-white rounded-2xl border p-4">
             <p className="text-xs text-gray-500">{c.label}</p>
-            <p className="text-2xl font-black mt-1">{c.value}</p>
+            <p className="layout-wrap mt-1 text-2xl font-black">{c.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl border p-5 space-y-3">
-        <h2 className="font-bold text-sm">Recent Orders</h2>
-        <div className="overflow-x-auto">
+      <div className="layout-table-section rounded-2xl border bg-white">
+        <h2 className="px-4 py-3 font-bold text-sm">Recent Orders</h2>
+        <div className="layout-table">
           <table className="w-full text-xs text-left">
             <thead className="bg-gray-50 text-gray-500 uppercase border-b">
               <tr>

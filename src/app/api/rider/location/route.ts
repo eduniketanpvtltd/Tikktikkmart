@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { db } from "@/lib/supabase/server";
 import { fail, ok, withAuth } from "@/lib/auth/withAuth";
+import { activeRouteStatuses } from "@/lib/orders/tracking";
 
 const schema = z.object({
+  orderId: z.uuid(),
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   heading: z.number().optional(),
@@ -14,7 +16,11 @@ export const POST = withAuth(["rider", "admin"], async (req, { user }) => {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return fail("Invalid location");
 
-  const { lat, lng, heading, speed } = parsed.data;
+  const { orderId, lat, lng, heading, speed } = parsed.data;
+  const { data: assignment, error: lookupError } = await db.from("orders").select("id")
+    .eq("id", orderId).eq("rider_id", user.id).in("status", activeRouteStatuses).maybeSingle();
+  if (lookupError) return fail("Could not verify the active delivery", 503);
+  if (!assignment) return fail("The delivery is no longer active", 409);
   const { error } = await db.from("rider_locations").upsert(
     {
       rider_id: user.id,

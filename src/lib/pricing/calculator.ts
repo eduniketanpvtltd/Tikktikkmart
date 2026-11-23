@@ -1,16 +1,17 @@
 import { db } from "@/lib/supabase/server";
+import {
+  DEFAULT_HANDLING_FEE,
+  DEFAULT_MIN_CART_VALUE,
+  DEFAULT_SMALL_CART_FEE,
+  DEFAULT_DELIVERY_FEE,
+  DEFAULT_FREE_DELIVERY_ABOVE,
+} from "@/lib/pricing/constants";
 import type { BillBreakdown } from "@/types/db";
 
 export interface CartItemInput {
   variant_id: string;
   quantity: number;
 }
-
-export const DEFAULT_HANDLING_FEE = 5;
-export const DEFAULT_MIN_CART_VALUE = 99;
-export const DEFAULT_SMALL_CART_FEE = 15;
-export const DEFAULT_DELIVERY_FEE = 25;
-export const DEFAULT_FREE_DELIVERY_ABOVE = 199;
 
 /**
  * Computes authoritative bill breakdown server-side from store inventory & coupons.

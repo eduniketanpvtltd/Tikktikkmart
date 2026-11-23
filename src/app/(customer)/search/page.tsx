@@ -1,161 +1,289 @@
 "use client";
-import React, { Suspense, useState, useEffect } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+
+import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Search as SearchIcon, X, TrendingUp } from "lucide-react";
+import { ChevronLeft, Clock3, Search, X } from "lucide-react";
+import { LayoutSkeleton } from "@/components/ui/LayoutSkeleton";
+import { BrowseProductCard } from "@/components/customer/BrowseView";
+import { CatalogImage } from "@/components/customer/CatalogImage";
+import { browseDepartments, featuredAssortment, featuredHref, fetchBrowseCatalog, fetchBrowseCategory } from "@/lib/catalog/browse";
+import { rankSearchProducts, relatedSearchProducts, searchWords } from "@/lib/catalog/search";
 import { useCartStore } from "@/stores/cartStore";
-import { ProductCard } from "@/components/customer/ProductCard";
-import type { Product } from "@/types/db";
+import type { Category, Product } from "@/types/db";
+import "./search.css";
 
-const POPULAR_SEARCHES = [
-  "Milk",
-  "Bread",
-  "Eggs",
-  "Butter",
-  "Potato",
-  "Onion",
-  "Chips",
-  "Maggi",
-  "Coke",
-  "Tomato",
-  "Atta",
-  "Cookies",
-];
+const trends = ["Milk", "Eggs", "Chips", "Maggi", "Coke", "Onion", "Butter"];
+const historyKey = "tiktikmart-recent-searches";
+
+function readRecent(): string[] {
+  try {
+    const saved: unknown = JSON.parse(sessionStorage.getItem(historyKey) ?? "[]");
+    return Array.isArray(saved) ? saved.filter((term): term is string => typeof term === "string").slice(0, 6) : [];
+  } catch {
+    return [];
+  }
+}
+
+function resultTitle(count: number) {
+  return `${count} ${count === 1 ? "result" : "results"}`;
+}
+
+function Highlight({ text, query }: { text: string; query: string }) {
+  const index = text.toLowerCase().indexOf(query.toLowerCase());
+  return index < 0 ? text : <>{text.slice(0, index)}<strong>{text.slice(index, index + query.length)}</strong>{text.slice(index + query.length)}</>;
+}
 
 function SearchResults() {
-  const router = useRouter();
-  const sp = useSearchParams();
-  const initialQ = sp.get("q") ?? "";
-  const [searchTerm, setSearchTerm] = useState(initialQ);
-  const { storeId } = useCartStore();
+  const params = useSearchParams();
+  const initial = params.get("q") ?? "";
+  const scope = params.get("scope");
+  const department = browseDepartments.find(({ slug }) => slug === scope);
+  const isFeatured = scope === "featured";
+  const scopeLabel = isFeatured ? "Featured" : department?.label;
+  const backHref = isFeatured ? featuredHref : department ? `/category/${department.slug}` : "/";
+  const [input, setInput] = useState(initial);
+  const [submitted, setSubmitted] = useState(Boolean(initial));
+  const [lookup, setLookup] = useState(initial.trim());
+  const [recent, setRecent] = useState<string[]>([]);
+  const field = useRef<HTMLInputElement>(null);
+  const query = input.trim();
+  const storeId = useCartStore((state) => state.storeId);
 
   useEffect(() => {
-    setSearchTerm(initialQ);
-  }, [initialQ]);
+    setInput(initial);
+    setLookup(initial.trim());
+    setSubmitted(Boolean(initial));
+  }, [initial]);
 
-  const { data: products = [], isLoading } = useQuery({
-    queryKey: ["search", searchTerm, storeId],
-    enabled: Boolean(searchTerm.trim()),
-    queryFn: async () => {
-      const qs = new URLSearchParams({ q: searchTerm.trim() });
+  useEffect(() => { setRecent(readRecent()); }, []);
+
+  useEffect(() => {
+    if (!query || query === lookup || submitted) return;
+    const timer = window.setTimeout(() => setLookup(query), 180);
+    return () => window.clearTimeout(timer);
+  }, [lookup, query, submitted]);
+
+  const home = useQuery({
+    queryKey: ["home", storeId],
+    queryFn: ({ signal }) => fetchBrowseCatalog(storeId, signal),
+  });
+  const scoped = useQuery({
+    queryKey: ["category-detail", department?.slug, storeId],
+    enabled: Boolean(department),
+    queryFn: ({ signal }) => fetchBrowseCategory(department?.slug ?? "", storeId, signal),
+  });
+  const assortment = featuredAssortment(home.data);
+  const featuredProducts = [...new Map([
+    ...assortment.heroes.map(({ product }) => product), ...assortment.newLaunches, ...assortment.deals, ...assortment.trending,
+  ].map((product) => [product.id, product])).values()];
+  const scopeProducts = isFeatured ? featuredProducts : scoped.data?.products ?? [];
+  const scopeSource = isFeatured ? home : scoped;
+  const words = searchWords(query);
+  const scopedMatches = scopeLabel
+    ? rankSearchProducts(scopeProducts, words, true).filter((product) => product.variants?.length)
+    : [];
+  const searchCatalog = !scopeLabel || (!scopeSource.isPending && !scopedMatches.length);
+  const global = useQuery({
+    queryKey: ["search-with-related", lookup, storeId],
+    enabled: searchCatalog && Boolean(query && lookup === query),
+    queryFn: async ({ signal }) => {
+      const qs = new URLSearchParams({ q: lookup, includeRelated: "1" });
       if (storeId) qs.set("storeId", storeId);
-      const res = await fetch(`/api/search?${qs.toString()}`);
-      const json = await res.json();
-      return (json.data ?? []) as Product[];
+      const response = await fetch(`/api/search?${qs}`, { signal });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(`HTTP ${response.status}: Search unavailable`);
+      return result.data as { products: Product[]; related: Product[] };
     },
   });
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchTerm.trim()) {
-      router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
-    }
-  };
+  const source = searchCatalog ? global : scopeSource;
+  const waiting = (searchCatalog && lookup !== query) || source.isLoading;
+  const failed = source.isError && !source.data;
+  const products = searchCatalog
+    ? (global.data?.products ?? []).filter((product) => product.variants?.length)
+    : scopedMatches;
+  const related = (searchCatalog ? global.data?.related ?? [] : relatedSearchProducts(scopeProducts, products, words))
+    .filter((product) => product.variants?.length && (product.variants[0].stock_available ?? 1) > 0).slice(0, 6);
+  const categories = [...(home.data?.categories ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+  const primaryCategories = categories.filter((category) => !category.parent_id).slice(0, 8);
+  const categorySuggestions = searchCatalog && query
+    ? categories.filter((category) => words.length && words.every((word) => category.name.toLowerCase().includes(word))).slice(0, 2)
+    : [];
+  const popular = (scopeLabel ? scopeProducts : assortment.trending)
+    .filter((product) => product.variants?.length && (product.variants[0].stock_available ?? 1) > 0).slice(0, 3);
+
+  function updateRecent(next: string[]) {
+    setRecent(next);
+    try { sessionStorage.setItem(historyKey, JSON.stringify(next)); } catch {}
+  }
+
+  function remember(term: string) {
+    if (term) updateRecent([term, ...readRecent().filter((value) => value.toLowerCase() !== term.toLowerCase())].slice(0, 6));
+  }
+
+  function href(term: string) {
+    const next = new URLSearchParams();
+    if (term) next.set("q", term);
+    if (scopeLabel && scope) next.set("scope", scope);
+    return next.size ? `/search?${next}` : "/search";
+  }
+
+  function run(term: string) {
+    const value = term.trim();
+    if (!value) return;
+    setInput(value);
+    setLookup(value);
+    setSubmitted(true);
+    remember(value);
+    field.current?.blur();
+    window.scrollTo(0, 0);
+    if (initial !== value) window.history.pushState(null, "", href(value));
+  }
+
+  function clear() {
+    setInput("");
+    setLookup("");
+    setSubmitted(false);
+    field.current?.focus();
+    if (initial) window.history.replaceState(null, "", href(""));
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    run(input);
+  }
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
-      {/* Top Search Bar */}
-      <div className="flex items-center gap-2">
-        <Link
-          href="/"
-          className="p-2 rounded-xl bg-white border border-gray-100 hover:bg-gray-50 text-gray-700 transition-colors shrink-0"
-        >
-          <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
-        </Link>
-        <form onSubmit={handleSearchSubmit} className="relative flex-1">
-          <SearchIcon className="w-4 h-4 text-gray-400 absolute left-3.5 top-3 pointer-events-none" />
-          <input
-            type="text"
-            autoFocus
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search for milk, chips, bread, veggies..."
-            className="w-full pl-10 pr-9 py-2.5 text-xs sm:text-sm font-medium rounded-2xl bg-white border border-gray-200/90 focus:border-[#f66002] focus:ring-2 focus:ring-[#f66002]/15 focus:outline-none shadow-2xs transition-all"
-          />
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchTerm("");
-                router.push("/search");
-              }}
-              className="absolute right-3 top-3 text-gray-400 hover:text-gray-700"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </form>
+    <div className="search-screen">
+      <h1 className="sr-only">Search</h1>
+      <header className="search-page-header">
+        <div>
+          <Link className="search-page-back" href={backHref} aria-label={scopeLabel ? `Back to ${scopeLabel}` : "Back to Home"}>
+            <ChevronLeft size={23} aria-hidden="true" />
+          </Link>
+          <form role="search" className="search-page-field" onSubmit={submit}>
+            <button className="search-page-submit" type="submit" aria-label="Submit search"><Search size={18} aria-hidden="true" /></button>
+            <input ref={field} type="search" autoFocus autoComplete="off" enterKeyHint="search" maxLength={120}
+              aria-label={scopeLabel ? `Search in ${scopeLabel}` : "Search products"}
+              placeholder={scopeLabel ? `Search in ${scopeLabel}` : "Search for milk, chips, coke"}
+              value={input} onChange={(event) => {
+                setInput(event.target.value);
+                setSubmitted(false);
+                if (!event.target.value.trim()) setLookup("");
+              }} />
+            {input && <button type="button" aria-label="Clear search" onClick={clear}><span><X size={14} aria-hidden="true" /></span></button>}
+          </form>
+        </div>
+      </header>
+
+      <div className="search-page-content">
+        {!query ? (
+          <>
+            {!!recent.length && <section aria-labelledby="search-recent-title">
+              <div className="search-section-heading">
+                <h2 id="search-recent-title">Recent searches</h2>
+                <button type="button" onClick={() => updateRecent([])}>Clear all</button>
+              </div>
+              <ul className="search-row-list">
+                {recent.map((term) => <li key={term} className="search-result-row">
+                  <button type="button" onClick={() => run(term)}><Clock3 size={18} aria-hidden="true" /><span>{term}</span></button>
+                  <button className="search-remove" type="button" aria-label={`Remove ${term}`} onClick={() => updateRecent(recent.filter((value) => value !== term))}><X size={18} aria-hidden="true" /></button>
+                </li>)}
+              </ul>
+            </section>}
+            <SearchDiscovery categories={primaryCategories} onSearch={run} />
+            {!!popular.length && <section aria-labelledby="search-popular-title">
+              <h2 id="search-popular-title" className="search-grid-title">Popular right now</h2>
+              <SearchProductGrid products={popular} />
+            </section>}
+          </>
+        ) : waiting ? (
+          <LayoutSkeleton shape="products" label="Searching products" />
+        ) : failed ? (
+          <div className="search-empty" role="status"><h2>Search couldn’t load</h2><button type="button" onClick={() => void source.refetch()}>Try again</button></div>
+        ) : !products.length && (submitted || !categorySuggestions.length) ? (
+          <>
+            <div className="search-empty" role="status">
+              <h2>No results for “{query}”</h2>
+              <p>Check the spelling or try a shorter word.</p>
+            </div>
+            <RelatedItems products={related} onOpen={() => remember(query)} />
+            <SearchDiscovery categories={primaryCategories} onSearch={run} noResults />
+          </>
+        ) : (
+          <>
+            {!submitted && <ul className="search-row-list" aria-label="Search suggestions">
+              {categorySuggestions.map((category) => <li key={category.id} className="search-result-row">
+                <Link href={`/category/${category.slug}`} onNavigate={() => remember(query)}>
+                  <Search size={18} aria-hidden="true" /><span><Highlight text={category.name} query={query} /> <small>category</small></span>
+                </Link>
+              </li>)}
+              {products.slice(0, 4).map((product) => {
+                const category = categories.find(({ id }) => id === product.category_id);
+                return <li key={product.id} className="search-result-row">
+                  <button type="button" onClick={() => run(product.name)}>
+                    <Search size={18} aria-hidden="true" />
+                    <span><Highlight text={product.name} query={query} /> {category && <small>in {category.name}</small>}</span>
+                  </button>
+                </li>;
+              })}
+            </ul>}
+            {products.length > 6 && <RelatedItems products={related} onOpen={() => remember(query)} />}
+            {!!products.length && <section aria-labelledby="search-products-title">
+              <h2 id="search-products-title" className="search-grid-title" aria-live="polite">{resultTitle(products.length)}</h2>
+              {scopeLabel && searchCatalog && <p className="search-catalog-context">Showing results from all products</p>}
+              <SearchProductGrid products={products} onOpen={() => remember(query)} />
+            </section>}
+            {products.length <= 6 && <RelatedItems products={related} onOpen={() => remember(query)} />}
+          </>
+        )}
       </div>
-
-      {/* When no query is entered: show Trending / Popular Searches */}
-      {!searchTerm.trim() ? (
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 space-y-4 shadow-2xs">
-          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-gray-500">
-            <TrendingUp className="w-4 h-4 text-[#f66002]" />
-            <span>Popular & Trending Searches</span>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {POPULAR_SEARCHES.map((term) => (
-              <button
-                key={term}
-                type="button"
-                onClick={() => {
-                  setSearchTerm(term);
-                  router.push(`/search?q=${encodeURIComponent(term)}`);
-                }}
-                className="px-3 py-1.5 rounded-full border border-gray-200 bg-gray-50 text-xs font-bold text-gray-700 hover:bg-[#fff0e6] hover:border-[#f66002] hover:text-[#f66002] transition-all"
-              >
-                {term}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500">
-            {products.length} {products.length === 1 ? "result" : "results"} for &ldquo;
-            <span className="text-gray-900 font-black">{searchTerm}</span>&rdquo;
-          </h2>
-
-          {isLoading ? (
-            <div className="py-12 text-center text-xs text-gray-400 font-bold uppercase tracking-wider">
-              Searching dark store shelves...
-            </div>
-          ) : products.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-gray-100 p-10 text-center space-y-3 shadow-2xs">
-              <span className="text-3xl">🔍</span>
-              <h3 className="font-bold text-sm text-gray-800">
-                No matching products found
-              </h3>
-              <p className="text-xs text-gray-500 max-w-xs mx-auto">
-                Try searching for something else like milk, bread, chips or cold drinks.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3">
-              {products.map((p) => (
-                <ProductCard key={p.id} product={p} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
 
-export default function SearchPage() {
+function SearchDiscovery({ categories, onSearch, noResults = false }: {
+  categories: Category[]; onSearch: (term: string) => void; noResults?: boolean;
+}) {
   return (
-    <Suspense
-      fallback={
-        <div className="py-8 text-center text-xs text-gray-400 font-bold">
-          Loading search...
+    <>
+      <section aria-labelledby="search-trending-title">
+        <h2 id="search-trending-title">{noResults ? "Try searching for" : "Trending near you"}</h2>
+        <div className="search-trending">
+          {trends.map((term) => <button type="button" key={term} onClick={() => onSearch(term)}>{term}</button>)}
         </div>
-      }
-    >
-      <SearchResults />
-    </Suspense>
+      </section>
+      {!!categories.length && <section aria-labelledby="search-categories-title">
+        <h2 id="search-categories-title">Browse categories</h2>
+        <div className="search-category-grid">
+          {categories.map((category) => (
+            <Link key={category.id} href={`/category/${category.slug}`}>
+              <span className="search-category-image"><CatalogImage src={category.image_url} className="object-cover" /></span>
+              {category.name}
+            </Link>
+          ))}
+        </div>
+      </section>}
+    </>
   );
+}
+
+function RelatedItems({ products, onOpen }: { products: Product[]; onOpen: () => void }) {
+  if (!products.length) return null;
+  return <section aria-labelledby="search-related-title">
+    <h2 id="search-related-title" className="search-grid-title">Related items</h2>
+    <SearchProductGrid products={products} onOpen={onOpen} shelf />
+  </section>;
+}
+
+function SearchProductGrid({ products, onOpen, shelf = false }: { products: Product[]; onOpen?: () => void; shelf?: boolean }) {
+  return <div className={shelf ? "search-related-shelf" : "search-product-grid"} onClick={(event) => {
+    if (event.target instanceof Element && event.target.closest('a[href^="/product/"]')) onOpen?.();
+  }}>{products.map((product) => <BrowseProductCard key={product.id} product={product} />)}</div>;
+}
+
+export default function SearchPage() {
+  return <Suspense fallback={<LayoutSkeleton shape="products" label="Loading search" />}><SearchResults /></Suspense>;
 }

@@ -1,0 +1,5 @@
+export const DEFAULT_HANDLING_FEE = 4;
+export const DEFAULT_MIN_CART_VALUE = 99;
+export const DEFAULT_SMALL_CART_FEE = 15;
+export const DEFAULT_DELIVERY_FEE = 25;
+export const DEFAULT_FREE_DELIVERY_ABOVE = 199;

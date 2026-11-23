@@ -1,4 +1,5 @@
 "use client";
+import { LayoutSkeleton } from "@/components/ui/LayoutSkeleton";
 import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
@@ -22,9 +23,9 @@ export default function AdminRidersPage() {
     <div className="space-y-4">
       <h1 className="text-xl font-extrabold">Rider KYC & Fleet</h1>
       {isLoading ? (
-        <p className="text-sm text-gray-500">Loading riders...</p>
+        <LayoutSkeleton shape="table" label="Loading riders" />
       ) : (
-        <div className="bg-white rounded-2xl border overflow-x-auto">
+        <div className="layout-table bg-white rounded-2xl border">
           <table className="w-full text-xs text-left">
             <thead className="bg-gray-50 text-gray-500 uppercase border-b">
               <tr>

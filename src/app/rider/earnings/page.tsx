@@ -1,4 +1,5 @@
 "use client";
+import { LayoutSkeleton } from "@/components/ui/LayoutSkeleton";
 import React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -27,21 +28,21 @@ export default function RiderEarningsPage() {
         <h1 className="text-xl font-extrabold">Earnings & COD Balance</h1>
 
         {isLoading ? (
-          <p className="text-sm text-gray-500">Loading...</p>
+          <LayoutSkeleton shape="metrics" label="Loading earnings" />
         ) : (
           <>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 min-[390px]:grid-cols-3">
               <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-2xs">
                 <p className="text-xs text-gray-500 font-medium">Total Earned</p>
-                <p className="text-lg font-black text-[#f66002]">₹{data?.totalEarned ?? 0}</p>
+                <p className="layout-wrap text-lg font-black text-[#f66002]">₹{data?.totalEarned ?? 0}</p>
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-2xs">
                 <p className="text-xs text-gray-500 font-medium">Deliveries</p>
-                <p className="text-lg font-black text-gray-900">{data?.completedCount ?? 0}</p>
+                <p className="layout-wrap text-lg font-black text-gray-900">{data?.completedCount ?? 0}</p>
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-2xs">
                 <p className="text-xs text-gray-500 font-medium">COD Cash</p>
-                <p className="text-lg font-black text-[#13193b]">₹{data?.codBalance ?? 0}</p>
+                <p className="layout-wrap text-lg font-black text-[#13193b]">₹{data?.codBalance ?? 0}</p>
               </div>
             </div>
 

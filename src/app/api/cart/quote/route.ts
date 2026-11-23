@@ -4,8 +4,8 @@ import { computeBillBreakdown } from "@/lib/pricing/calculator";
 import { fail, ok } from "@/lib/auth/withAuth";
 
 const schema = z.object({
-  storeId: z.union([z.string().uuid(), z.literal(""), z.null(), z.undefined()]).optional(),
-  items: z.array(z.object({ variant_id: z.string(), quantity: z.number().int().min(1) })),
+  storeId: z.union([z.guid(), z.literal(""), z.null(), z.undefined()]).optional(),
+  items: z.array(z.object({ variant_id: z.guid(), quantity: z.number().int().min(1) })),
   couponCode: z.string().nullable().optional(),
   tip: z.number().min(0).max(500).optional(),
 });

@@ -1,3 +1,4 @@
+import { readCoordinates } from "@/lib/maps/coordinates";
 import { z } from "zod";
 import { db } from "@/lib/supabase/server";
 import { fail, ok, withAuth } from "@/lib/auth/withAuth";
@@ -20,13 +21,13 @@ const createSchema = z.object({
 export const GET = withAuth(null, async (_req, { user }) => {
   const { data, error } = await db
     .from("addresses")
-    .select("id, user_id, label, receiver_name, receiver_phone, line1, line2, landmark, city, state, pincode, is_default, created_at")
+    .select("id, user_id, label, receiver_name, receiver_phone, line1, line2, landmark, city, state, pincode, is_default, created_at, location")
     .eq("user_id", user.id)
     .order("is_default", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (error) return fail(error.message, 500);
-  return ok(data ?? []);
+  return ok((data ?? []).map(({ location, ...address }) => ({ ...address, ...readCoordinates(location) })));
 });
 
 export const POST = withAuth(null, async (req, { user }) => {

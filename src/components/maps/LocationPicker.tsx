@@ -141,7 +141,7 @@ export function LocationPicker({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="theme-location-picker space-y-3">
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
@@ -163,7 +163,7 @@ export function LocationPicker({
       </div>
 
       {mapsError ? (
-        <div className="p-4 border rounded-lg bg-amber-50 text-amber-800 text-xs space-y-2">
+        <div className="theme-location-error p-4 border rounded-lg bg-amber-50 text-amber-800 text-xs space-y-2">
           <p className="font-medium">Map unavailable ({mapsError}). Enter coordinates manually:</p>
           <div className="grid grid-cols-2 gap-2">
             <input
@@ -196,7 +196,7 @@ export function LocationPicker({
         <div ref={mapRef} className="w-full h-56 rounded-xl border bg-gray-100" />
       )}
 
-      <div className="flex items-start gap-2 text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg border">
+      <div className="theme-location-caption flex items-start gap-2 text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg border">
         <MapPin className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
         <span className="line-clamp-2">{address}</span>
       </div>

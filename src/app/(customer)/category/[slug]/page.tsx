@@ -1,167 +1,125 @@
 "use client";
-import React, { useState } from "react";
+
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, SlidersHorizontal } from "lucide-react";
+import { Grid2X2 } from "lucide-react";
 import { useCartStore } from "@/stores/cartStore";
-import { ProductCard } from "@/components/customer/ProductCard";
-import type { Category, Product } from "@/types/db";
+import { BrowseProductCard, BrowseView } from "@/components/customer/BrowseView";
+import { CatalogImage } from "@/components/customer/CatalogImage";
+import { showCustomerToast } from "@/components/customer/CustomerFeedback";
+import { getCardImage } from "@/components/customer/ProductCard";
+import { browseDiscount, browseGroups, browsePrice, fetchBrowseCategory } from "@/lib/catalog/browse";
+
+const sorts = ["Relevance", "Low to high", "High to low", "Highest discount"] as const;
+type CategorySelection = { selectedId?: string; under50: boolean; discountOnly: boolean; sort: number };
+const defaultSelection: CategorySelection = { under50: false, discountOnly: false, sort: 0 };
 
 export default function CategoryPage() {
   const { slug } = useParams<{ slug: string }>();
-  const { storeId } = useCartStore();
-  const [sortBy, setSortBy] = useState<"relevance" | "price_low" | "price_high" | "discount">("relevance");
+  return <CategoryScreen key={slug} slug={slug} />;
+}
 
-  // Fetch all categories for the left sidebar
-  const { data: allCategories = [] } = useQuery({
-    queryKey: ["all-categories"],
-    queryFn: async () => {
-      const res = await fetch("/api/categories");
-      const json = await res.json();
-      return (json.data ?? []) as Category[];
-    },
-  });
+function CategoryScreen({ slug }: { slug: string }) {
+  const storeId = useCartStore((state) => state.storeId);
+  const [selection, setSelection] = useState(defaultSelection);
+  const { selectedId, under50, discountOnly, sort } = selection;
+  const layout = useRef<HTMLDivElement>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, isError: loadFailed, refetch } = useQuery({
     queryKey: ["category-detail", slug, storeId],
-    queryFn: async () => {
-      const qs = storeId ? `?storeId=${storeId}` : "";
-      const res = await fetch(`/api/categories/${slug}/products${qs}`);
-      const json = await res.json();
-      return json.data as { category: Category; subcategories: Category[]; products: Product[] };
-    },
+    queryFn: ({ signal }) => fetchBrowseCategory(slug, storeId, signal),
   });
+  const isError = loadFailed && !data;
 
-  if (isLoading) {
-    return (
-      <div className="py-12 flex flex-col items-center justify-center gap-3">
-        <div className="w-8 h-8 rounded-full border-2 border-[#f66002] border-t-transparent animate-spin" />
-        <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">
-          Loading fresh items...
-        </p>
-      </div>
-    );
+  useLayoutEffect(() => {
+    if (history.state?.categorySelection?.slug === slug) {
+      setSelection(history.state.categorySelection.selection);
+    }
+    const node = layout.current;
+    const header = node?.closest("[data-customer-app]")?.querySelector(".customer-store-header");
+    if (!node || !header) return;
+    const measure = () => node.style.setProperty("--browse-header-height", `${header.getBoundingClientRect().height}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, [slug]);
+
+  function updateSelection(changes: Partial<CategorySelection>) {
+    const next = { ...selection, ...changes };
+    setSelection(next);
+    history.replaceState({ ...history.state, categorySelection: { slug, selection: next } }, "");
   }
 
-  const category = data?.category;
-  let products = data?.products ?? [];
-
-  // Client sort
-  if (sortBy === "price_low") {
-    products = [...products].sort((a, b) => {
-      const pa = a.variants?.[0]?.effective_price ?? a.variants?.[0]?.base_price ?? 0;
-      const pb = b.variants?.[0]?.effective_price ?? b.variants?.[0]?.base_price ?? 0;
-      return pa - pb;
-    });
-  } else if (sortBy === "price_high") {
-    products = [...products].sort((a, b) => {
-      const pa = a.variants?.[0]?.effective_price ?? a.variants?.[0]?.base_price ?? 0;
-      const pb = b.variants?.[0]?.effective_price ?? b.variants?.[0]?.base_price ?? 0;
-      return pb - pa;
-    });
-  } else if (sortBy === "discount") {
-    products = [...products].sort((a, b) => {
-      const da = ((a.variants?.[0]?.mrp ?? 0) - (a.variants?.[0]?.base_price ?? 0));
-      const db = ((b.variants?.[0]?.mrp ?? 0) - (b.variants?.[0]?.base_price ?? 0));
-      return db - da;
-    });
-  }
+  const groups = data ? browseGroups(data.category, data.subcategories, data.products) : [];
+  const selected = groups.find(({ id }) => id === selectedId) ?? groups.find(({ products }) => products.length) ?? groups[0];
+  const filtered = (selected?.products ?? []).filter((product) =>
+    (!under50 || browsePrice(product) < 50) && (!discountOnly || browseDiscount(product) >= 10));
+  if (sort === 1) filtered.sort((a, b) => browsePrice(a) - browsePrice(b));
+  if (sort === 2) filtered.sort((a, b) => browsePrice(b) - browsePrice(a));
+  if (sort === 3) filtered.sort((a, b) => browseDiscount(b) - browseDiscount(a));
 
   return (
-    <div className="space-y-4">
-      {/* Top Header */}
-      <div className="flex items-center justify-between gap-3 bg-white p-3 sm:p-4 rounded-2xl border border-gray-100 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="p-2 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 transition-colors shrink-0"
-          >
-            <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
-          </Link>
-          <div>
-            <h1 className="text-base sm:text-lg font-black text-gray-900 leading-tight">
-              {category?.name ?? "Category"}
-            </h1>
-            <p className="text-[11px] text-gray-500 font-medium">
-              {products.length} products available for 10-min delivery
-            </p>
-          </div>
-        </div>
-
-        {/* Sort selector */}
-        <div className="flex items-center gap-1 text-xs">
-          <SlidersHorizontal className="w-3.5 h-3.5 text-gray-400 hidden sm:block" />
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="border border-gray-200 rounded-xl px-2.5 py-1.5 bg-gray-50 text-xs font-bold text-gray-700 focus:outline-none focus:border-[#f66002]"
-          >
-            <option value="relevance">Popularity</option>
-            <option value="price_low">Price: Low to High</option>
-            <option value="price_high">Price: High to Low</option>
-            <option value="discount">Highest Discount</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Blinkit Split Layout: Left Rail + Product Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-start">
-        {/* Left Categories Rail */}
-        <aside className="bg-white rounded-2xl border border-gray-100 p-2 shadow-2xs flex md:flex-col gap-1 overflow-x-auto no-scrollbar md:sticky md:top-24">
-          <p className="text-[10px] font-black uppercase tracking-wider text-gray-400 px-3 py-1 hidden md:block">
-            Categories
-          </p>
-          {allCategories.map((c) => {
-            const isCurrent = c.slug === slug;
+    <BrowseView path={`/category/${slug}`}>
+      <div className="browse-department" ref={layout}>
+        <nav className="browse-rail" aria-label={data ? `${data.category.name} subcategories` : "Subcategories"}>
+          {isPending && [0, 1, 2].map((i) => <div key={i} className="browse-rail-placeholder" aria-hidden="true" />)}
+          {groups.map((group) => {
+            const image = group.image || group.products.map(getCardImage).find(Boolean);
             return (
-              <Link
-                key={c.id}
-                href={`/category/${c.slug}`}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
-                  isCurrent
-                    ? "bg-[#fff0e6] text-[#f66002] border-l-4 border-[#f66002] shadow-2xs font-black"
-                    : "text-gray-700 hover:bg-gray-50 hover:text-gray-950"
-                }`}
-              >
-                {c.image_url && (
-                  <img
-                    src={c.image_url}
-                    alt={c.name}
-                    className="w-6 h-6 rounded-md object-contain shrink-0"
-                  />
-                )}
-                <span className="truncate">{c.name}</span>
-              </Link>
+              <button type="button" key={group.id} aria-pressed={group.id === selected?.id}
+                onClick={() => {
+                  updateSelection({ selectedId: group.id });
+                  const top = layout.current?.getBoundingClientRect().top;
+                  const headerBottom = layout.current?.closest("[data-customer-app]")
+                    ?.querySelector(".customer-store-header")?.getBoundingClientRect().bottom;
+                  if (top != null && headerBottom != null && top < headerBottom) window.scrollBy(0, top - headerBottom);
+                }}>
+                <span className="browse-rail-image" aria-hidden="true">
+                  {image ? <CatalogImage src={image} className="object-cover" /> : <Grid2X2 size={19} />}
+                </span>
+                <span className="browse-rail-label">{group.label}</span>
+              </button>
             );
           })}
-        </aside>
-
-        {/* Right Product Grid */}
-        <section className="space-y-4">
-          {products.length === 0 ? (
-            <div className="bg-white rounded-2xl border p-12 text-center space-y-3">
-              <span className="text-3xl">🥦</span>
-              <h3 className="font-bold text-base text-gray-800">No products in this category</h3>
-              <p className="text-xs text-gray-500">
-                Check back soon or explore other categories.
-              </p>
-              <Link
-                href="/"
-                className="inline-block px-4 py-2.5 rounded-xl bg-[#f66002] hover:bg-[#dd5500] text-white text-xs font-bold transition-colors shadow-sm"
-              >
-                Explore Homepage
-              </Link>
+        </nav>
+        <section className="browse-department-main" aria-labelledby="browse-section-title" aria-busy={isPending}>
+          <div className="browse-filters" role="group" aria-label="Product filters">
+            <button type="button" onClick={() => {
+              const next = (sort + 1) % sorts.length;
+              updateSelection({ sort: next });
+              showCustomerToast(next === 1 || next === 2 ? `Price: ${sorts[next].toLowerCase()}` : sorts[next]);
+            }}>Sort: {sorts[sort]}</button>
+            <button type="button" aria-pressed={under50} onClick={() => updateSelection({ under50: !under50 })}>Under ₹50</button>
+            <button type="button" aria-pressed={discountOnly} onClick={() => updateSelection({ discountOnly: !discountOnly })}>10%+ off</button>
+          </div>
+          <div className="browse-grid-heading">
+            <h1 id="browse-section-title">{selected?.label ?? data?.category.name ?? "Category"}</h1>
+            {!isPending && !isError && <span aria-live="polite">{filtered.length} {filtered.length === 1 ? "item" : "items"}</span>}
+          </div>
+          {isPending ? (
+            <div className="browse-grid" role="status" aria-label="Loading products">
+              {Array.from({ length: 4 }, (_, i) => <div key={i} className="storefront-skeleton browse-card-placeholder" />)}
             </div>
+          ) : isError ? (
+            <div className="browse-empty">
+              <p>The category couldn’t load.</p>
+              <button type="button" onClick={() => void refetch()}>Try again</button>
+            </div>
+          ) : !filtered.length ? (
+            <p className="browse-empty">{under50 || discountOnly ? "No products match these filters." : "No products in this subcategory yet."}</p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3">
-              {products.map((p) => (
-                <ProductCard key={p.id} product={p} />
+            <div className="browse-grid" key={`${selected?.id}:${under50}:${discountOnly}:${sort}`}>
+              {filtered.map((product, index) => (
+                <div key={product.id} className="browse-card-enter" style={{ "--browse-card-index": Math.min(index, 8) } as CSSProperties}>
+                  <BrowseProductCard product={product} />
+                </div>
               ))}
             </div>
           )}
         </section>
       </div>
-    </div>
+    </BrowseView>
   );
 }

@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { SwipeableSheet } from "@/components/ui/SwipeableSheet";
+import { CodeInput } from "@/components/ui/CodeInput";
+import React, { useRef, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bike,
   Power,
@@ -29,6 +31,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/AppProviders";
 import { apiFetch } from "@/lib/api/client";
+import { isRouteActive } from "@/lib/orders/tracking";
 
 // Types
 interface DeliveryOrder {
@@ -45,7 +48,7 @@ interface DeliveryOrder {
   estimatedMinutes: number;
   distanceKm: number;
   payout: number;
-  deliveryOtp: string;
+  demoDeliveryOtp?: string;
   pickupPin: string;
   codAmount?: number;
 }
@@ -70,6 +73,9 @@ const DEMO_RIDER = {
 
 export default function RiderDashboardPage() {
   const { user } = useAuth();
+  const query = useQueryClient();
+  const stepInFlight = useRef(false);
+  const [stepPending, setStepPending] = useState(false);
   // State
   const [isOnline, setIsOnline] = useState(true);
   const [riderTier] = useState<"bronze" | "silver" | "gold">("gold");
@@ -178,6 +184,32 @@ export default function RiderDashboardPage() {
     }
   });
 
+  const liveOrderId = backendData?.activeOrder?.id as string | undefined;
+  const sharingRoute = Boolean(liveOrderId && isRouteActive(backendData.activeOrder.status));
+  const [gpsError, setGpsError] = useState(false);
+  useEffect(() => {
+    if (!sharingRoute || !liveOrderId || !navigator.geolocation) return;
+    let lastSentAt = 0;
+    let sending = false;
+    const request = new AbortController();
+    const watch = navigator.geolocation.watchPosition(({ coords }) => {
+      if (sending || Date.now() - lastSentAt < 7000) return;
+      lastSentAt = Date.now();
+      sending = true;
+      void apiFetch("/api/rider/location", {
+        method: "POST", signal: request.signal,
+        body: JSON.stringify({ orderId: liveOrderId, lat: coords.latitude, lng: coords.longitude,
+          heading: coords.heading ?? undefined, speed: coords.speed ?? undefined }),
+      }).then(({ ok }) => {
+        if (!request.signal.aborted) setGpsError(!ok);
+      }).finally(() => { sending = false; });
+    }, () => setGpsError(true), { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+    return () => {
+      navigator.geolocation.clearWatch(watch);
+      request.abort();
+    };
+  }, [liveOrderId, sharingRoute]);
+
   // Sync active backend orders if available
   useEffect(() => {
     if (backendData?.activeOrder && !activeOrder) {
@@ -188,18 +220,18 @@ export default function RiderDashboardPage() {
         storeName: "TikTikMart Hub - 1st Pilot Store",
         storeAddress: "Plot 42, Speed Corridor, Bengaluru",
         storePhone: "+91 80 4920 1100",
-        customerName: "Valued Customer",
-        customerAddress: bOrder.address?.line1 || "Customer Address, Bengaluru",
-        customerPhone: "+91 98765 00000",
+        customerName: bOrder.address_snapshot?.receiver_name || "Customer",
+        customerAddress: [bOrder.address_snapshot?.line1, bOrder.address_snapshot?.line2, bOrder.address_snapshot?.city].filter(Boolean).join(", "),
+        customerPhone: bOrder.address_snapshot?.receiver_phone ?? "",
         itemsCount: bOrder.items?.length || 3,
         itemsSummary: `${bOrder.items?.length || 3} items (Amul Milk, Bread, Fresh Produce)`,
         estimatedMinutes: 8,
         distanceKm: 2.3,
         payout: 85,
-        deliveryOtp: bOrder.delivery_otp || "4321",
-        pickupPin: "8821"
+        pickupPin: bOrder.pickup_code ?? ""
       });
-      setActiveStep(bOrder.status === "dispatched" ? 3 : 1);
+      const steps: Record<string, 1 | 2 | 3 | 4> = { rider_at_store: 2, picked_up: 3, out_for_delivery: 3, arrived: 4 };
+      setActiveStep(steps[bOrder.status] ?? 1);
     }
   }, [backendData, activeOrder]);
 
@@ -220,7 +252,30 @@ export default function RiderDashboardPage() {
     setToast({ type: "info", message: "Delivery passed. Ready for next offer." });
   };
 
-  const handleArriveAtStore = () => {
+  async function persistStep(step: string, code?: string) {
+    if (!activeOrder || stepInFlight.current) return false;
+    if (activeOrder.demoDeliveryOtp) return true;
+    stepInFlight.current = true;
+    setStepPending(true);
+    try {
+      const result = await apiFetch(`/api/rider/orders/${activeOrder.id}/step`, {
+        method: "POST", body: JSON.stringify({ step, code }),
+      });
+      if (!result.ok) {
+        const message = result.error ?? "The delivery status couldn’t be updated.";
+        if (step === "deliver") setOtpError(message);
+        else setToast({ type: "error", message });
+        return false;
+      }
+      return true;
+    } finally {
+      stepInFlight.current = false;
+      setStepPending(false);
+    }
+  }
+
+  const handleArriveAtStore = async () => {
+    if (!await persistStep("arrived-store")) return;
     setActiveStep(2);
     setToast({
       type: "success",
@@ -228,7 +283,8 @@ export default function RiderDashboardPage() {
     });
   };
 
-  const handleVerifyPickup = () => {
+  const handleVerifyPickup = async () => {
+    if (!await persistStep("picked-up", activeOrder?.pickupPin)) return;
     setActiveStep(3);
     setToast({
       type: "success",
@@ -236,7 +292,8 @@ export default function RiderDashboardPage() {
     });
   };
 
-  const handleArriveAtCustomer = () => {
+  const handleArriveAtCustomer = async () => {
+    if (!await persistStep("arrived")) return;
     setActiveStep(4);
     setToast({
       type: "success",
@@ -244,13 +301,27 @@ export default function RiderDashboardPage() {
     });
   };
 
-  const handleCompleteDelivery = () => {
+  const handleCompleteDelivery = async () => {
     if (!activeOrder) return;
     const cleanOtp = enteredOtp.trim();
 
-    // Verify against order OTP or demo code
-    if (cleanOtp !== activeOrder.deliveryOtp && cleanOtp !== "4321" && cleanOtp !== "1234") {
-      setOtpError(`Invalid OTP. Ask customer or enter demo code: ${activeOrder.deliveryOtp}`);
+    if (!/^\d{4}$/.test(cleanOtp)) {
+      setOtpError("Enter the four-digit delivery code.");
+      return;
+    }
+    if (!activeOrder.demoDeliveryOtp) {
+      if (!await persistStep("deliver", cleanOtp)) return;
+      query.setQueryData<Record<string, unknown>>(["rider-me", user?.id], (data) => data ? { ...data, activeOrder: null } : data);
+      void query.invalidateQueries({ queryKey: ["rider-me", user?.id] });
+      setActiveOrder(null);
+      setEnteredOtp("");
+      setOtpError("");
+      setActiveStep(1);
+      setToast({ type: "success", message: "Delivery confirmed." });
+      return;
+    }
+    if (cleanOtp !== activeOrder.demoDeliveryOtp) {
+      setOtpError("Invalid delivery code.");
       return;
     }
 
@@ -307,7 +378,7 @@ export default function RiderDashboardPage() {
       estimatedMinutes: 9,
       distanceKm: 2.4,
       payout: 92,
-      deliveryOtp: "5824",
+      demoDeliveryOtp: "5824",
       pickupPin: "7193",
       codAmount: 0
     };
@@ -321,7 +392,7 @@ export default function RiderDashboardPage() {
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full shadow-lg text-sm font-semibold flex items-center gap-2 transition-all animate-in fade-in slide-in-from-top-4 ${
+          className={`fixed w-max max-w-[calc(100%-1.5rem)] top-[calc(1rem+env(safe-area-inset-top,0px))] left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full shadow-lg text-sm font-semibold flex items-center gap-2 transition-all animate-in fade-in slide-in-from-top-4 ${
             toast.type === "success"
               ? "bg-[#13193B] text-white border border-[#F66002]"
               : toast.type === "error"
@@ -337,20 +408,20 @@ export default function RiderDashboardPage() {
       )}
 
       {/* TOP HEADER: Midnight Navy + Orange */}
-      <header className="bg-[#13193B] text-white pt-4 pb-5 px-4 shadow-md sticky top-0 z-40">
-        <div className="max-w-xl mx-auto flex items-center justify-between gap-3">
+      <header className="bg-[#13193B] text-white pt-[calc(1rem+env(safe-area-inset-top,0px))] pb-5 px-4 shadow-md sticky top-0 z-40">
+        <div className="rider-header-inner max-w-xl mx-auto flex items-center justify-between gap-3">
           {/* Left: Avatar & Rider Details */}
           <div
             onClick={() => setIsProfileModalOpen(true)}
             className="flex items-center gap-3 cursor-pointer select-none group min-w-0"
             title="View Full Profile & KYC"
           >
-            <div className="relative">
-              <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#F66002] shadow-sm">
+            <div className="relative shrink-0">
+              <div className="media-frame size-12 rounded-full border-2 border-[#F66002] shadow-sm">
                 <img
                   src={DEMO_RIDER.avatar}
                   alt={DEMO_RIDER.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                  className="media-content group-hover:scale-105 transition-transform"
                 />
               </div>
               <span
@@ -361,8 +432,8 @@ export default function RiderDashboardPage() {
             </div>
 
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="font-extrabold text-[15px] text-white truncate leading-tight">
+              <div className="rider-heading flex items-center gap-x-2 gap-y-0.5">
+                <h2 className="layout-wrap font-extrabold text-[15px] text-white leading-tight">
                   {DEMO_RIDER.name}
                 </h2>
                 <span className="bg-amber-400/20 text-[#FFD269] text-[10px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5">
@@ -372,7 +443,7 @@ export default function RiderDashboardPage() {
                   {riderTier}
                 </span>
               </div>
-              <p className="text-[11px] text-gray-300 truncate mt-0.5">
+              <p className="layout-wrap text-[11px] text-gray-300 mt-0.5">
                 {DEMO_RIDER.vehicleNumber} • {DEMO_RIDER.vehicleModel}
               </p>
             </div>
@@ -710,6 +781,7 @@ export default function RiderDashboardPage() {
                     <span>Navigate to Store</span>
                   </a>
                   <button
+                    disabled={stepPending}
                     onClick={handleArriveAtStore}
                     className="flex-1 py-2.5 rounded-xl bg-[#13193B] text-white text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm hover:bg-[#1a2350]"
                   >
@@ -744,6 +816,7 @@ export default function RiderDashboardPage() {
                 </p>
 
                 <button
+                  disabled={stepPending}
                   onClick={handleVerifyPickup}
                   className="w-full py-3 rounded-xl bg-gradient-to-r from-[#F66002] to-[#ff7a29] text-white font-extrabold text-sm shadow-md flex items-center justify-center gap-2 hover:brightness-105 active:scale-98"
                 >
@@ -764,6 +837,10 @@ export default function RiderDashboardPage() {
                     </div>
                     <div className="font-extrabold text-sm text-gray-900">{activeOrder.customerName}</div>
                     <div className="text-xs text-gray-600">{activeOrder.customerAddress}</div>
+                    {liveOrderId === activeOrder.id && backendData?.activeOrder?.instructions && (
+                      <p className="text-xs text-gray-700">Delivery instructions: {backendData.activeOrder.instructions}</p>
+                    )}
+                    {sharingRoute && gpsError && <p role="status" className="text-xs text-gray-700">Location sharing paused. Check location access on this device.</p>}
                   </div>
                   <a
                     href={`tel:${activeOrder.customerPhone}`}
@@ -787,6 +864,7 @@ export default function RiderDashboardPage() {
                     <span>Open Maps</span>
                   </a>
                   <button
+                    disabled={stepPending}
                     onClick={handleArriveAtCustomer}
                     className="flex-1 py-2.5 rounded-xl bg-[#13193B] text-white text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm hover:bg-[#1a2350]"
                   >
@@ -810,40 +888,34 @@ export default function RiderDashboardPage() {
 
                 {/* OTP Input Field */}
                 <div>
-                  <input
-                    type="text"
-                    maxLength={4}
-                    value={enteredOtp}
-                    onChange={(e) => {
-                      setEnteredOtp(e.target.value);
-                      if (otpError) setOtpError("");
-                    }}
-                    placeholder="Enter 4-digit OTP"
-                    className="w-full text-center tracking-[10px] text-2xl font-black text-[#13193B] py-3 rounded-xl border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#F66002]"
-                  />
+                  <CodeInput label="Customer delivery code" value={enteredOtp} onChange={(code) => {
+                    setEnteredOtp(code);
+                    if (otpError) setOtpError("");
+                  }} />
                   {otpError && (
                     <p className="text-red-600 text-xs font-semibold text-center mt-1.5">{otpError}</p>
                   )}
                 </div>
 
                 {/* Quick Auto-fill Helper for Demo Testing */}
-                <div className="flex items-center justify-between text-[11px] text-gray-500 px-1">
+                {activeOrder.demoDeliveryOtp && <div className="flex items-center justify-between text-[11px] text-gray-500 px-1">
                   <span>Demo Customer OTP:</span>
                   <button
                     type="button"
-                    onClick={() => setEnteredOtp(activeOrder.deliveryOtp)}
+                    onClick={() => setEnteredOtp(activeOrder.demoDeliveryOtp ?? "")}
                     className="font-extrabold text-[#F66002] hover:underline"
                   >
-                    Fill {activeOrder.deliveryOtp} ⚡
+                    Fill {activeOrder.demoDeliveryOtp} ⚡
                   </button>
-                </div>
+                </div>}
 
                 <button
+                  disabled={stepPending}
                   onClick={handleCompleteDelivery}
                   className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 hover:brightness-105 active:scale-98"
                 >
                   <CheckCircle2 className="w-5 h-5" />
-                  <span>Complete Delivery & Receive ₹{activeOrder.payout}</span>
+                  <span>{stepPending ? "Verifying…" : activeOrder.demoDeliveryOtp ? `Complete Delivery & Receive ₹${activeOrder.payout}` : "Verify code & complete delivery"}</span>
                 </button>
               </div>
             )}
@@ -937,24 +1009,23 @@ export default function RiderDashboardPage() {
 
       {/* 1. RIDER PROFILE MODAL */}
       {isProfileModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 max-h-[90vh] overflow-y-auto space-y-4">
+        <SwipeableSheet onClose={() => setIsProfileModalOpen(false)} labelledBy="rider-sheet-profile">
+          <div className="p-5 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-              <h3 className="font-extrabold text-base text-[#13193B]">Delivery Partner Profile</h3>
+              <h3 id="rider-sheet-profile" className="font-extrabold text-base text-[#13193B]">Delivery Partner Profile</h3>
               <button
                 onClick={() => setIsProfileModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
+                aria-label="Close dialog"
+                className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="flex items-center gap-3">
-              <img
-                src={DEMO_RIDER.avatar}
-                alt={DEMO_RIDER.name}
-                className="w-16 h-16 rounded-full border-2 border-[#F66002] object-cover"
-              />
+              <span className="media-frame block size-16 shrink-0 rounded-full border-2 border-[#F66002]">
+                <img src={DEMO_RIDER.avatar} alt={DEMO_RIDER.name} className="media-content" />
+              </span>
               <div>
                 <h4 className="font-black text-lg text-gray-900">{DEMO_RIDER.name}</h4>
                 <p className="text-xs text-gray-500">{DEMO_RIDER.phone}</p>
@@ -998,21 +1069,22 @@ export default function RiderDashboardPage() {
               View Uploaded KYC & Vehicle Documents
             </button>
           </div>
-        </div>
+        </SwipeableSheet>
       )}
 
       {/* 2. TRIPS HISTORY MODAL */}
       {isTripsModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 max-h-[85vh] overflow-y-auto space-y-3">
+        <SwipeableSheet onClose={() => setIsTripsModalOpen(false)} labelledBy="rider-sheet-trips">
+          <div className="p-5 space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-gray-100">
               <div>
-                <h3 className="font-extrabold text-base text-[#13193B]">Trip History</h3>
+                <h3 id="rider-sheet-trips" className="font-extrabold text-base text-[#13193B]">Trip History</h3>
                 <p className="text-[11px] text-gray-500">{completedTrips.length} completed trips today</p>
               </div>
               <button
                 onClick={() => setIsTripsModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
+                aria-label="Close dialog"
+                className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1039,18 +1111,19 @@ export default function RiderDashboardPage() {
               ))}
             </div>
           </div>
-        </div>
+        </SwipeableSheet>
       )}
 
       {/* 3. EARNINGS PASSBOOK MODAL */}
       {isEarningsModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 max-h-[85vh] overflow-y-auto space-y-4">
+        <SwipeableSheet onClose={() => setIsEarningsModalOpen(false)} labelledBy="rider-sheet-earnings">
+          <div className="p-5 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-              <h3 className="font-extrabold text-base text-[#13193B]">Earnings Passbook</h3>
+              <h3 id="rider-sheet-earnings" className="font-extrabold text-base text-[#13193B]">Earnings Passbook</h3>
               <button
                 onClick={() => setIsEarningsModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
+                aria-label="Close dialog"
+                className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1095,21 +1168,22 @@ export default function RiderDashboardPage() {
               <span>Linked UPI: vikram.singh@oksbi (Verified)</span>
             </div>
           </div>
-        </div>
+        </SwipeableSheet>
       )}
 
       {/* 4. KYC & DOCUMENTS MODAL */}
       {isKycModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 max-h-[85vh] overflow-y-auto space-y-4">
+        <SwipeableSheet onClose={() => setIsKycModalOpen(false)} labelledBy="rider-sheet-kyc">
+          <div className="p-5 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-gray-100">
               <div>
-                <h3 className="font-extrabold text-base text-[#13193B]">KYC & Vehicle Docs</h3>
+                <h3 id="rider-sheet-kyc" className="font-extrabold text-base text-[#13193B]">KYC & Vehicle Docs</h3>
                 <p className="text-[11px] text-emerald-600 font-bold">All 5 documents verified ✓</p>
               </div>
               <button
                 onClick={() => setIsKycModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
+                aria-label="Close dialog"
+                className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1138,21 +1212,22 @@ export default function RiderDashboardPage() {
               ))}
             </div>
           </div>
-        </div>
+        </SwipeableSheet>
       )}
 
       {/* 5. EMERGENCY SOS MODAL */}
       {isSosModalOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 max-h-[85vh] overflow-y-auto space-y-4">
+        <SwipeableSheet onClose={() => setIsSosModalOpen(false)} labelledBy="rider-sheet-sos">
+          <div className="p-5 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-gray-100">
               <div className="flex items-center gap-2 text-red-600">
                 <ShieldAlert className="w-5 h-5" />
-                <h3 className="font-extrabold text-base">Emergency SOS</h3>
+                <h3 id="rider-sheet-sos" className="font-extrabold text-base">Emergency SOS</h3>
               </div>
               <button
                 onClick={() => setIsSosModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
+                aria-label="Close dialog"
+                className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1190,28 +1265,29 @@ export default function RiderDashboardPage() {
               <span className="font-bold">Live GPS Anchor:</span> 12.9352° N, 77.6245° E (Koramangala, Bengaluru)
             </div>
           </div>
-        </div>
+        </SwipeableSheet>
       )}
 
       {/* 6. DAILY HELMET & SELFIE VERIFICATION MODAL */}
       {isSelfieModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 max-h-[85vh] overflow-y-auto space-y-4 text-center">
+        <SwipeableSheet onClose={() => setIsSelfieModalOpen(false)} labelledBy="rider-sheet-selfie">
+          <div className="p-5 space-y-4 text-center">
             <div className="flex items-center justify-between pb-2 border-b border-gray-100 text-left">
-              <h3 className="font-extrabold text-base text-[#13193B]">Helmet & Safety Check</h3>
+              <h3 id="rider-sheet-selfie" className="font-extrabold text-base text-[#13193B]">Helmet & Safety Check</h3>
               <button
                 onClick={() => setIsSelfieModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
+                aria-label="Close dialog"
+                className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="w-44 h-44 rounded-full border-4 border-dashed border-[#F66002] mx-auto overflow-hidden relative flex items-center justify-center bg-gray-50">
+            <div className="media-frame size-44 max-w-full rounded-full border-4 border-dashed border-[#F66002] mx-auto relative flex items-center justify-center bg-gray-50">
               <img
                 src={DEMO_RIDER.avatar}
                 alt="Selfie"
-                className="w-full h-full object-cover"
+                className="media-content"
               />
               <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
                 <Camera className="w-8 h-8 text-white drop-shadow" />
@@ -1240,7 +1316,7 @@ export default function RiderDashboardPage() {
               <span>Capture & Verify Helmet</span>
             </button>
           </div>
-        </div>
+        </SwipeableSheet>
       )}
     </div>
   );

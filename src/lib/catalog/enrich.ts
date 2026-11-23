@@ -1,4 +1,5 @@
 import { db } from "@/lib/supabase/server";
+import { stockedVariant } from "./queries";
 
 /**
  * Enriches products with their active variants and store-specific stock/price.
@@ -28,22 +29,7 @@ export async function enrichProductsWithStore(products: any[], storeId: string |
   return products.map((p) => {
     const pVars = (variants ?? [])
       .filter((v) => v.product_id === p.id)
-      .map((v) => {
-        const inv = invMap.get(v.id);
-        const stockAvailable = storeId
-          ? inv && inv.is_available
-            ? Math.max(0, inv.quantity - inv.reserved)
-            : 0
-          : 99;
-        return {
-          ...v,
-          mrp: Number(v.mrp),
-          base_price: Number(v.base_price),
-          effective_price: Number(inv?.price_override ?? v.base_price),
-          stock_available: stockAvailable,
-          rack_location: inv?.rack_location ?? null,
-        };
-      });
+      .map((v) => stockedVariant(v, invMap.get(v.id), storeId));
     return { ...p, variants: pVars };
   });
 }

@@ -1,0 +1,83 @@
+/* Keep viewport clipping separate from intentional shelves and table scrollers. */
+html { overflow-x: hidden; }
+body { overflow-x: clip; }
+
+.media-frame {
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.media-content {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-content--contain { object-fit: contain; }
+
+.catalog-image-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.layout-wrap {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.layout-table {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.layout-table table { min-width: max(100%, 34rem); }
+.layout-table :is(td, th) { overflow-wrap: anywhere; }
+.layout-table :is(input, select) { max-width: 100%; }
+
+.mobile-nav-item { min-width: 0; }
+.mobile-nav-icon {
+  display: grid;
+  width: 32px;
+  height: 22px;
+  place-items: center;
+  border-radius: 8px;
+}
+.mobile-nav-item[aria-current="page"] .mobile-nav-icon {
+  background: var(--peach-light);
+  color: var(--theme-orange-text);
+}
+
+.product-card-price { flex-wrap: wrap; }
+.product-card-stepper button { min-width: 0; }
+
+.checkout-address-summary > div { min-width: 0; }
+.checkout-address-summary input[type="radio"] { flex: none; }
+.checkout-address-form input { min-width: 0; }
+.checkout-address-summary p { overflow-wrap: anywhere; }
+
+.rider-heading,
+.store-heading { min-width: 0; flex-wrap: wrap; }
+
+@media (max-width: 359px) {
+  .cart-row-content {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 6px 10px;
+  }
+  .cart-row-content > .cart-row-thumbnail { width: 46px; height: 46px; }
+  .cart-row-controls {
+    grid-column: 2;
+    flex-direction: row-reverse;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 5px;
+  }
+  .cart-row-controls > span { margin-top: 0; }
+  .rider-header-inner { flex-wrap: wrap; }
+}
+
+.layout-table-section { overflow: hidden; }

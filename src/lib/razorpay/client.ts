@@ -18,7 +18,8 @@ export function getRazorpay(): Razorpay {
  * passes 100 paise (₹1) to Razorpay in test mode.
  */
 export function toRazorpayPaise(grandTotalInr: number): number {
-  if (process.env.NEXT_PUBLIC_RAZORPAY_TEST_ONE_RUPEE === "true") {
+  if (process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID?.startsWith("rzp_test_") &&
+      process.env.NEXT_PUBLIC_RAZORPAY_TEST_ONE_RUPEE === "true") {
     return 100;
   }
   return Math.max(100, Math.round(grandTotalInr * 100));
@@ -35,7 +36,8 @@ export function verifyRazorpayPaymentSignature(params: {
     .createHmac("sha256", secret)
     .update(`${params.razorpayOrderId}|${params.razorpayPaymentId}`)
     .digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(params.razorpaySignature));
+  return /^[a-f0-9]{64}$/i.test(params.razorpaySignature) &&
+    crypto.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(params.razorpaySignature, "hex"));
 }
 
 export function verifyRazorpayWebhookSignature(body: string, signature: string): boolean {

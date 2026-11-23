@@ -2,10 +2,13 @@
 import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
+import { deferDelete } from "@/lib/ui/deferDelete";
+import { useUndoKeys } from "@/components/ui/UndoToast";
 import { apiFetch } from "@/lib/api/client";
 
 export default function AdminMarketingPage() {
   const qc = useQueryClient();
+  const undoKeys = useUndoKeys();
   const [coupon, setCoupon] = useState({ code: "", description: "", type: "flat", value: 50, min_order: 199 });
   const [bannerUrl, setBannerUrl] = useState("");
 
@@ -38,9 +41,14 @@ export default function AdminMarketingPage() {
     }
   };
 
-  const remove = async (kind: "coupon" | "banner", id: string) => {
-    await apiFetch(`/api/admin/marketing?kind=${kind}&id=${id}`, { method: "DELETE" });
-    qc.invalidateQueries({ queryKey: ["admin-marketing"] });
+  const remove = (kind: "coupon" | "banner", id: string) => {
+    const field = kind === "coupon" ? "coupons" : "banners";
+    deferDelete<{ coupons: { id: string }[]; banners: { id: string }[] }>(
+      qc, ["admin-marketing"], `${kind}:${id}`,
+      `/api/admin/marketing?kind=${kind}&id=${encodeURIComponent(id)}`,
+      kind === "coupon" ? "Coupon" : "Banner",
+      (current) => ({ ...current, [field]: current[field].filter((item) => item.id !== id) }),
+    );
   };
 
   return (
@@ -111,9 +119,9 @@ export default function AdminMarketingPage() {
       <div className="bg-white rounded-2xl border p-4 space-y-2">
         <h2 className="font-bold text-sm">Active Coupons</h2>
         <div className="divide-y">
-          {(data?.coupons ?? []).map((c: any) => (
-            <div key={c.id} className="py-2 flex items-center justify-between text-xs">
-              <div>
+          {(data?.coupons ?? []).filter((c: { id: string }) => !undoKeys.has(`coupon:${c.id}`)).map((c: any) => (
+            <div key={c.id} className="py-2 flex items-center justify-between gap-2 text-xs">
+              <div className="layout-wrap">
                 <span className="font-extrabold">{c.code}</span> · {c.type === "flat" ? `₹${c.value}` : `${c.value}%`} off (min ₹{c.min_order})
               </div>
               <button type="button" onClick={() => remove("coupon", c.id)} className="text-red-600">
@@ -127,9 +135,9 @@ export default function AdminMarketingPage() {
       <div className="bg-white rounded-2xl border p-4 space-y-2">
         <h2 className="font-bold text-sm">Banners</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {(data?.banners ?? []).map((b: any) => (
-            <div key={b.id} className="relative rounded-xl overflow-hidden border h-28">
-              <img src={b.image_url} alt="Banner" className="w-full h-full object-cover" />
+          {(data?.banners ?? []).filter((b: { id: string }) => !undoKeys.has(`banner:${b.id}`)).map((b: any) => (
+            <div key={b.id} className="media-frame relative aspect-[3/1] rounded-xl border bg-gray-50">
+              <img src={b.image_url} alt="Banner" className="media-content" />
               <button
                 type="button"
                 onClick={() => remove("banner", b.id)}

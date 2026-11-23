@@ -1,5 +1,7 @@
 "use client";
-import React from "react";
+import { LayoutSkeleton } from "@/components/ui/LayoutSkeleton";
+import React, { useRef, useState } from "react";
+import { enqueueUndo } from "@/components/ui/UndoToast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 
@@ -22,13 +24,29 @@ export default function AdminOrdersPage() {
     },
   });
 
-  const cancelOrder = async (orderId: string) => {
-    if (!confirm("Cancel this order?")) return;
-    await apiFetch("/api/admin/orders", {
-      method: "POST",
-      body: JSON.stringify({ orderId, action: "cancel" }),
+  const queued = useRef(new Set<string>());
+  const [cancelling, setCancelling] = useState<ReadonlySet<string>>(new Set());
+  const cancelOrder = (orderId: string) => {
+    if (queued.current.has(orderId)) return;
+    queued.current.add(orderId);
+    setCancelling(new Set(queued.current));
+    const finish = () => {
+      queued.current.delete(orderId);
+      setCancelling(new Set(queued.current));
+    };
+    enqueueUndo("Order cancellation scheduled", finish, async () => {
+      try {
+        const result = await apiFetch("/api/admin/orders", {
+          method: "POST",
+          body: JSON.stringify({ orderId, action: "cancel" }),
+        });
+        if (!result.ok) throw new Error(result.error ?? "Couldn’t cancel the order.");
+        enqueueUndo("Order cancelled", undefined, undefined, 2400);
+      } finally {
+        finish();
+        await qc.invalidateQueries({ queryKey: ["admin-orders"] });
+      }
     });
-    qc.invalidateQueries({ queryKey: ["admin-orders"] });
   };
 
   const assignRider = async (orderId: string, riderId: string) => {
@@ -44,9 +62,9 @@ export default function AdminOrdersPage() {
     <div className="space-y-4">
       <h1 className="text-xl font-extrabold">All Orders</h1>
       {isLoading ? (
-        <p className="text-sm text-gray-500">Loading orders...</p>
+        <LayoutSkeleton shape="table" label="Loading orders" />
       ) : (
-        <div className="bg-white rounded-2xl border overflow-x-auto">
+        <div className="layout-table bg-white rounded-2xl border">
           <table className="w-full text-xs text-left">
             <thead className="bg-gray-50 text-gray-500 uppercase border-b">
               <tr>
@@ -89,7 +107,8 @@ export default function AdminOrdersPage() {
                     {!["delivered", "cancelled", "refunded"].includes(o.status) && (
                       <button
                         type="button"
-                        onClick={() => cancelOrder(o.id)}
+                        disabled={cancelling.has(o.id)}
+                          onClick={() => cancelOrder(o.id)}
                         className="text-red-600 font-bold hover:underline"
                       >
                         Cancel

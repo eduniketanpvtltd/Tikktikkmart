@@ -11,6 +11,7 @@ export interface CartItem {
   price: number;
   mrp: number;
   maxQty: number;
+  stockLimit?: number;
   quantity: number;
 }
 
@@ -18,6 +19,7 @@ export interface SelectedLocation {
   lat: number;
   lng: number;
   address: string;
+  label?: "Home" | "Office" | "Other";
   city?: string;
 }
 
@@ -38,7 +40,7 @@ interface CartState {
     etaMinutes?: number | null;
   }) => void;
   addItem: (item: Omit<CartItem, "quantity">) => void;
-  setQty: (variantId: string, quantity: number) => void;
+  setQty: (variantId: string, quantity: number, limits?: Pick<CartItem, "maxQty" | "stockLimit">) => void;
   setCoupon: (code: string | null) => void;
   setTip: (tip: number) => void;
   clearCart: () => void;
@@ -81,14 +83,14 @@ export const useCartStore = create<CartState>()(
           }
           return { items: [...state.items, { ...item, quantity: 1 }] };
         }),
-      setQty: (variantId, quantity) =>
+      setQty: (variantId, quantity, limits) =>
         set((state) => {
           if (quantity <= 0) {
             return { items: state.items.filter((i) => i.variantId !== variantId) };
           }
           return {
             items: state.items.map((i) =>
-              i.variantId === variantId ? { ...i, quantity: Math.min(quantity, i.maxQty) } : i
+              i.variantId === variantId ? { ...i, ...limits, quantity: Math.min(quantity, limits?.maxQty ?? i.maxQty) } : i
             ),
           };
         }),

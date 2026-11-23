@@ -1,81 +1,66 @@
 "use client";
-import React, { useEffect, useState } from "react";
+
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ChevronRight,
-  Zap,
-  ShieldCheck,
-  Clock,
-  Sparkles,
-  ArrowRight,
-} from "lucide-react";
+import { ChevronRight } from "lucide-react";
+import { CatalogImage } from "@/components/customer/CatalogImage";
+import { CollectionTiles, FrequentlyBought } from "@/components/customer/HomeCollections";
+import { getCardImage, ProductCard } from "@/components/customer/ProductCard";
+import { FeaturedCarousel } from "@/components/customer/FeaturedCarousel";
+import { showCustomerToast } from "@/components/customer/CustomerFeedback";
+import { StorefrontRefresh } from "@/components/customer/StorefrontRefresh";
+import { pressTilt, useOpenProduct } from "@/lib/catalog/productMotion";
+import { fetchBrowseCatalog } from "@/lib/catalog/browse";
+import { StorefrontBackToTop } from "@/components/customer/StorefrontBackToTop";
+import { StorefrontPromotions } from "@/components/customer/StorefrontPromotions";
 import { useCartStore } from "@/stores/cartStore";
-import { ProductCard } from "@/components/customer/ProductCard";
+import { useWishlistStore } from "@/stores/wishlistStore";
 import type { Category, Product } from "@/types/db";
 
-// Curated pastel background themes for category tiles matching brand accents
-const CATEGORY_COLORS: Record<string, { bg: string; border: string }> = {
-  "vegetables-fruits": { bg: "bg-[#eef9f2]", border: "border-[#d2f0db]" },
-  "dairy-bread-eggs": { bg: "bg-[#f0f7ff]", border: "border-[#d6e7ff]" },
-  "munchies-snacks": { bg: "bg-[#fff7ed]", border: "border-[#ffedd5]" },
-  "cold-drinks-juices": { bg: "bg-[#fef2f2]", border: "border-[#fee2e2]" },
-  "atta-rice-dal": { bg: "bg-[#fefce8]", border: "border-[#fef08a]" },
-  "instant-frozen": { bg: "bg-[#faf5ff]", border: "border-[#f3e8ff]" },
-};
+const quickShopSlugs = ["dairy-bread-eggs", "vegetables-fruits", "munchies-snacks"];
 
-const PROMO_SLIDES = [
-  {
-    id: "promo-1",
-    badge: "LAST MINUTE SAVER",
-    title: "TIKK TIKK MART — 10 Mins Delivery",
-    subtitle: "Fresh milk, bread, eggs, veggies & chilled drinks at your door",
-    cta: "Shop Essentials",
-    link: "/category/dairy-bread-eggs",
-    bgGradient: "from-[#f66002] via-[#ff6f14] to-[#d64f00]",
-    textColor: "text-white",
-  },
-  {
-    id: "promo-2",
-    badge: "FLAT ₹50 OFF",
-    title: "First Order Discount with WELCOME50",
-    subtitle: "Use code WELCOME50 on checkout for instant ₹50 discount",
-    cta: "Claim Discount",
-    link: "/cart",
-    bgGradient: "from-[#13193b] via-[#1a234f] to-[#13193b]",
-    textColor: "text-white",
-  },
-  {
-    id: "promo-3",
-    badge: "MIDNIGHT CRAVINGS",
-    title: "Snacks, Cold Drinks & Munchies",
-    subtitle: "Kurkure, chips, ice cold Coke & 2-minute Maggi in minutes",
-    cta: "Explore Munchies",
-    link: "/category/munchies-snacks",
-    bgGradient: "from-[#ff7a29] to-[#ea580c]",
-    textColor: "text-white",
-  },
-];
+const snackSlugs = new Set(["munchies-snacks", "cold-drinks-juices"]);
 
 export default function CustomerHomePage() {
-  const { storeId, serviceable, setServiceability } = useCartStore();
-  const [activeBanner, setActiveBanner] = useState(0);
+  const storefront = useRef<HTMLDivElement>(null);
+  const openProduct = useOpenProduct();
 
-  // Auto-slide banner carousel
   useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveBanner((prev) => (prev + 1) % PROMO_SLIDES.length);
-    }, 4500);
-    return () => clearInterval(timer);
+    const page = storefront.current;
+    const surface = page?.closest<HTMLElement>("[data-customer-app]");
+    const end = page?.querySelector<HTMLElement>("[data-theme-gradient-end]");
+    if (!page || !surface || !end) return;
+
+    const measure = () => {
+      const height = Math.round(end.getBoundingClientRect().top - surface.getBoundingClientRect().top);
+      if (height > 0) surface.style.setProperty("--theme-gradient-end", `${height}px`);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(page);
+    const header = surface.querySelector(".customer-store-header");
+    if (header) observer.observe(header);
+    return () => {
+      observer.disconnect();
+      surface.style.removeProperty("--theme-gradient-end");
+    };
   }, []);
+
+  const storeId = useCartStore((state) => state.storeId);
+  const serviceable = useCartStore((state) => state.serviceable);
+  const setServiceability = useCartStore((state) => state.setServiceability);
+  const { productIds, toggleProduct } = useWishlistStore();
 
   // On first visit, auto-detect location or default to Kolkata pilot store coordinates
   useEffect(() => {
-    if (serviceable === null) {
+    const initial = useCartStore.getState();
+    if (initial.serviceable === null && !initial.location) {
       fetch("/api/serviceability?lat=22.5726&lng=88.3639")
         .then((r) => r.json())
         .then((json) => {
-          if (json?.ok && json.data?.serviceable) {
+          const current = useCartStore.getState();
+          if (current.serviceable === null && !current.location && json?.ok && json.data?.serviceable) {
             setServiceability({
               location: { lat: 22.5726, lng: 88.3639, address: "Park Street, Kolkata" },
               serviceable: true,
@@ -89,381 +74,249 @@ export default function CustomerHomePage() {
     }
   }, [serviceable, setServiceability]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError: loadFailed, refetch } = useQuery({
     queryKey: ["home", storeId],
-    queryFn: async () => {
-      const url = storeId ? `/api/home?storeId=${storeId}` : "/api/home";
-      const res = await fetch(url);
-      const json = await res.json();
-      return json.data as {
-        banners: Array<{ id: string; image_url: string; link_type: string; link_value: string }>;
-        categories: Category[];
-        products: Product[];
-      };
-    },
+    queryFn: ({ signal }) => fetchBrowseCatalog(storeId, signal),
   });
+  const isError = loadFailed && !data;
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-44 sm:h-52 rounded-3xl bg-gray-200" />
-        <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-28 rounded-2xl bg-gray-200" />
-          ))}
-        </div>
-        <div className="h-60 rounded-3xl bg-gray-200" />
-      </div>
-    );
-  }
+  useEffect(() => {
+    const root = storefront.current;
+    if (!root || !("IntersectionObserver" in window) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    root.querySelectorAll("[data-storefront-stagger]").forEach((row) => {
+      Array.from(row.children).forEach((tile, index) => {
+        (tile as HTMLElement).style.setProperty("--tile-order", String(index));
+      });
+    });
+
+    const sections = [...root.querySelectorAll<HTMLElement>("[data-storefront-reveal]:not([data-storefront-revealed])")];
+    const observer = new IntersectionObserver((entries) => {
+      for (const { target, isIntersecting } of entries) {
+        if (!isIntersecting) continue;
+        const section = target as HTMLElement;
+        section.dataset.storefrontRevealed = "";
+        delete section.dataset.storefrontPending;
+        observer.unobserve(section);
+      }
+    }, { threshold: 0.12 });
+
+    for (const section of sections) {
+      section.dataset.storefrontPending = "";
+      observer.observe(section);
+    }
+
+    return () => {
+      observer.disconnect();
+      sections.forEach((section) => delete section.dataset.storefrontPending);
+    };
+  }, [data, productIds.length]);
 
   const categories = data?.categories ?? [];
   const products = data?.products ?? [];
+  const departments = [
+    { title: "Grocery & Kitchen", categories: categories.filter((category) => !snackSlugs.has(category.slug)) },
+    { title: "Snacks & Drinks", categories: categories.filter((category) => snackSlugs.has(category.slug)) },
+  ].filter((department) => department.categories.length > 0);
+  const shelves = categories
+    .map((category) => ({
+      category,
+      products: products.filter((product) => product.category_id === category.id && product.variants?.length),
+    }))
+    .filter((shelf) => shelf.products.length > 0);
 
-  // Group products into shelves
-  const dairyProducts = products.filter((p) => p.category_id === "22222222-2222-2222-2222-222222222202");
-  const snackProducts = products.filter((p) => p.category_id === "22222222-2222-2222-2222-222222222203");
-  const drinkProducts = products.filter((p) => p.category_id === "22222222-2222-2222-2222-222222222204");
-  const vegProducts = products.filter((p) => p.category_id === "22222222-2222-2222-2222-222222222201");
-  const stapleProducts = products.filter(
-    (p) =>
-      p.category_id === "22222222-2222-2222-2222-222222222205" ||
-      p.category_id === "22222222-2222-2222-2222-222222222206"
+  const quickShop = quickShopSlugs.flatMap((slug) => shelves.filter(({ category }) => category.slug === slug));
+  const featured = shelves.flatMap(({ category, products }) =>
+    products.filter((product) => (product.variants?.[0]?.stock_available ?? 1) > 0 && getCardImage(product))
+      .slice(0, 1).map((product) => ({ category, product })),
+  );
+  const sparse = shelves.filter(({ products }) => products.length < 3).map(({ category }) => category);
+  const sparseCategories = sparse.length
+    ? [...sparse, ...categories.filter((category) => !sparse.some(({ id }) => category.id === id))].slice(0, 4)
+    : [];
+  const savedProducts = products.filter((product) => product.variants?.length && productIds.includes(product.id));
+
+  const renderCard = (product: Product) => (
+    <ProductCard
+      key={product.id}
+      product={product}
+      compact
+      saved={productIds.includes(product.id)}
+      onToggleSaved={() => {
+        const wasSaved = useWishlistStore.getState().productIds.includes(product.id);
+        toggleProduct(product.id);
+        showCustomerToast(wasSaved ? "Removed from wishlist" : "Added to wishlist");
+      }}
+    />
   );
 
   return (
-    <div className="space-y-6 sm:space-y-8">
-      {/* Location warning if out of bounds */}
-      {serviceable === false && (
-        <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-xs sm:text-sm text-amber-900 flex items-center justify-between gap-3 shadow-2xs">
-          <span>
-            📍 We are not delivering to your selected pin yet. Tap location above to pick Park Street, Kolkata.
-          </span>
-          <span className="font-bold underline shrink-0 cursor-pointer">Change</span>
+    <div ref={storefront} data-pull-refresh className="space-y-5 sm:space-y-7">
+      <StorefrontRefresh storefront={storefront} refresh={refetch} />
+      <div className="storefront-promo-section">
+        <StorefrontPromotions />
+        <div className="storefront-promo-followup mx-auto max-w-5xl px-3 sm:px-4">
+          {isLoading ? <HomeShelfPlaceholder /> : <FrequentlyBought aisles={quickShop} />}
         </div>
-      )}
-
-      {/* Hero Banner Carousel (Tikk Tikk Mart Colors) */}
-      <section className="relative overflow-hidden rounded-3xl shadow-[0_8px_25px_rgba(246,96,2,0.12)]">
-        <div
-          className="flex transition-transform duration-500 ease-out"
-          style={{ transform: `translateX(-${activeBanner * 100}%)` }}
-        >
-          {PROMO_SLIDES.map((slide) => (
-            <div
-              key={slide.id}
-              className={`w-full shrink-0 bg-gradient-to-r ${slide.bgGradient} ${slide.textColor} p-5 sm:p-7 min-h-[160px] sm:min-h-[190px] flex flex-col justify-between relative overflow-hidden`}
-            >
-              {/* Speed line ambient decor */}
-              <div className="absolute right-[-20px] bottom-[-20px] w-52 h-52 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-
-              <div className="space-y-1 relative z-10 max-w-md">
-                <span className="inline-block bg-[#ffd269] text-[#13193b] text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full mb-1">
-                  {slide.badge}
-                </span>
-                <h1 className="text-lg sm:text-2xl font-black tracking-tight leading-tight">
-                  {slide.title}
-                </h1>
-                <p className="text-xs sm:text-sm font-medium opacity-90 line-clamp-2">
-                  {slide.subtitle}
-                </p>
-              </div>
-
-              <div className="relative z-10 pt-2">
-                <Link
-                  href={slide.link}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white text-[#13193b] font-black text-xs hover:bg-[#fff5ed] transition-colors shadow-xs"
-                >
-                  {slide.cta} <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Carousel indicators */}
-        <div className="absolute bottom-2.5 right-4 flex items-center gap-1.5 z-20">
-          {PROMO_SLIDES.map((_, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => setActiveBanner(idx)}
-              className={`h-1.5 rounded-full transition-all ${
-                activeBanner === idx ? "w-5 bg-white" : "w-1.5 bg-white/50"
-              }`}
-            />
-          ))}
-        </div>
-      </section>
-
-      {/* Explore Categories Matrix */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🛍️</span>
-            <h2 className="text-base sm:text-lg font-black text-[#13193b] tracking-tight">
-              Explore by Category
-            </h2>
-          </div>
-          <Link
-            href="/category/dairy-bread-eggs"
-            className="text-xs font-black text-[#f66002] hover:underline flex items-center"
-          >
-            SEE ALL <ChevronRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 sm:gap-3">
-          {categories.map((c) => {
-            const style = CATEGORY_COLORS[c.slug] || { bg: "bg-white", border: "border-gray-100" };
-            return (
-              <Link
-                key={c.id}
-                href={`/category/${c.slug}`}
-                className={`group ${style.bg} border ${style.border} rounded-2xl p-2.5 sm:p-3 flex flex-col items-center text-center gap-1.5 shadow-[0_2px_6px_rgba(19,25,59,0.02)] hover:shadow-[0_6px_16px_rgba(246,96,2,0.08)] hover:scale-[1.02] transition-all duration-150`}
-              >
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden flex items-center justify-center mix-blend-multiply p-1">
-                  {c.image_url ? (
-                    <img
-                      src={c.image_url}
-                      alt={c.name}
-                      className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-300"
-                    />
-                  ) : (
-                    <span className="text-2xl">🛒</span>
-                  )}
-                </div>
-                <span className="text-[11px] sm:text-xs font-bold text-gray-800 line-clamp-2 leading-tight group-hover:text-[#f66002]">
-                  {c.name}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Shelf 1: Dairy, Bread & Eggs */}
-      {dairyProducts.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-lg">🥛</span>
-                <h2 className="text-base sm:text-lg font-black text-[#13193b] tracking-tight">
-                  Dairy, Bread & Eggs
-                </h2>
-              </div>
-              <p className="text-[11px] text-gray-500 font-medium">Fresh morning essentials in 10 mins</p>
-            </div>
-            <Link
-              href="/category/dairy-bread-eggs"
-              className="text-xs font-black text-[#f66002] hover:underline flex items-center"
-            >
-              SEE ALL <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-
-          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 pt-1 -mx-3 px-3 sm:mx-0 sm:px-0">
-            {dairyProducts.map((p) => (
-              <ProductCard key={p.id} product={p} compact />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Shelf 2: Munchies & Snacks */}
-      {snackProducts.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-lg">🍿</span>
-                <h2 className="text-base sm:text-lg font-black text-[#13193b] tracking-tight">
-                  Munchies & Snacks
-                </h2>
-              </div>
-              <p className="text-[11px] text-gray-500 font-medium">Chips, namkeen, cookies & crisps</p>
-            </div>
-            <Link
-              href="/category/munchies-snacks"
-              className="text-xs font-black text-[#f66002] hover:underline flex items-center"
-            >
-              SEE ALL <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-
-          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 pt-1 -mx-3 px-3 sm:mx-0 sm:px-0">
-            {snackProducts.map((p) => (
-              <ProductCard key={p.id} product={p} compact />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Mid-Page Promo Card: TIKK TIKK Navy & Orange Express Banner */}
-      <div className="bg-[#13193b] text-white rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm border border-[#1f2752]">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#f66002] text-white flex items-center justify-center shrink-0 shadow-xs">
-            <Zap className="w-6 h-6 fill-white" />
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5 text-[#ffd269]">
-              <span className="text-[10px] font-black uppercase tracking-wider">
-                TIKK TIKK MART EXPRESS
-              </span>
-            </div>
-            <h3 className="text-sm sm:text-base font-black">
-              No minimum order · Free delivery above ₹199
-            </h3>
-            <p className="text-xs text-gray-300">
-              Dispatched from your hyper-local dark store within 60 seconds
-            </p>
-          </div>
-        </div>
-        <Link
-          href="/category/vegetables-fruits"
-          className="shrink-0 w-full sm:w-auto text-center px-5 py-2.5 rounded-xl bg-[#f66002] text-white text-xs font-black uppercase tracking-wider hover:bg-[#dc5400] transition-colors shadow-xs"
-        >
-          Shop Fresh Produce
-        </Link>
       </div>
 
-      {/* Shelf 3: Cold Drinks & Juices */}
-      {drinkProducts.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-lg">🥤</span>
-                <h2 className="text-base sm:text-lg font-black text-[#13193b] tracking-tight">
-                  Cold Drinks & Juices
-                </h2>
-              </div>
-              <p className="text-[11px] text-gray-500 font-medium">Chilled fizzy sodas, cans & juices</p>
-            </div>
-            <Link
-              href="/category/cold-drinks-juices"
-              className="text-xs font-black text-[#f66002] hover:underline flex items-center"
-            >
-              SEE ALL <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-
-          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 pt-1 -mx-3 px-3 sm:mx-0 sm:px-0">
-            {drinkProducts.map((p) => (
-              <ProductCard key={p.id} product={p} compact />
-            ))}
-          </div>
-        </section>
+      {serviceable === false && (
+        <p role="status" className="rounded-xl border border-[color:var(--theme-warning)] bg-[var(--theme-warning-bg)] px-4 py-3 text-sm text-[color:var(--theme-warning)]">
+          Delivery is unavailable at this address. Select another location above.
+        </p>
       )}
 
-      {/* Shelf 4: Fresh Vegetables & Fruits */}
-      {vegProducts.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-lg">🥦</span>
-                <h2 className="text-base sm:text-lg font-black text-[#13193b] tracking-tight">
-                  Fresh Vegetables & Fruits
-                </h2>
-              </div>
-              <p className="text-[11px] text-gray-500 font-medium">Farm-fresh daily harvested produce</p>
-            </div>
-            <Link
-              href="/category/vegetables-fruits"
-              className="text-xs font-black text-[#f66002] hover:underline flex items-center"
-            >
-              SEE ALL <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
+      <div id="featured" className="scroll-mt-48 lg:scroll-mt-36">
+        {isLoading ? <HomeShelfPlaceholder featured /> : featured.length > 0 && (
+          <section data-storefront-reveal aria-labelledby="featured-title" className="space-y-2">
+            <h2 id="featured-title" className="text-lg font-extrabold tracking-tight text-[color:var(--theme-ink)] sm:text-xl">Featured this week</h2>
+            <FeaturedCarousel>
+              {featured.map(({ category, product }) => (
+                <Link
+                  key={product.id}
+                  href={`/product/${product.slug}`}
+                  {...pressTilt}
+                  onNavigate={(event) => {
+                    event.preventDefault();
+                    const source = storefront.current?.querySelector<HTMLElement>(`[data-feature-image="${CSS.escape(product.slug)}"]`) ?? null;
+                    openProduct(product, source);
+                  }}
+                  className="press-tilt relative flex w-[44%] shrink-0 snap-start flex-col overflow-hidden rounded-2xl border-2 border-[color:var(--border-orange)] bg-[var(--peach-light)] p-2.5 text-center sm:w-[24%]"
+                >
+                  <span className="absolute left-1/2 top-0 max-w-[95%] -translate-x-1/2 truncate rounded-b-lg bg-[var(--navy)] px-2 py-1 text-[10px] font-bold text-white">{category.name}</span>
+                  <span className="mt-6 line-clamp-2 min-h-9 text-sm font-bold leading-[18px] text-[color:var(--theme-ink)]">{product.name}</span>
+                  <div data-storefront-tile data-feature-image={product.slug} data-card-image={product.slug} className="relative mt-2 grid aspect-[5/4] place-items-center overflow-hidden rounded-xl bg-[var(--white)]">
+                    <CatalogImage src={getCardImage(product)} className="object-contain p-1" />
+                  </div>
+                </Link>
+              ))}
+            </FeaturedCarousel>
+          </section>
+        )}
+      </div>
 
-          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 pt-1 -mx-3 px-3 sm:mx-0 sm:px-0">
-            {vegProducts.map((p) => (
-              <ProductCard key={p.id} product={p} compact />
+      <section id="categories" data-theme-gradient-end aria-labelledby="category-title" className="scroll-mt-48 lg:scroll-mt-36 space-y-5 sm:space-y-6">
+        <h1 id="category-title" className="sr-only">All grocery departments</h1>
+        {isLoading ? (
+          <div role="status" aria-label="Loading categories" className="grid grid-cols-4 gap-2">
+            {Array.from({ length: 6 }, (_, index) => (
+              <div key={index} className="storefront-skeleton relative h-24 overflow-hidden rounded-xl bg-[var(--theme-skeleton)] sm:h-32" />
             ))}
           </div>
-        </section>
-      )}
-
-      {/* Shelf 5: Atta, Rice, Dal & Instant */}
-      {stapleProducts.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-lg">🍚</span>
-                <h2 className="text-base sm:text-lg font-black text-[#13193b] tracking-tight">
-                  Atta, Rice, Dal & Instant Food
-                </h2>
-              </div>
-              <p className="text-[11px] text-gray-500 font-medium">Daily kitchen staples and noodles</p>
-            </div>
-            <Link
-              href="/category/atta-rice-dal"
-              className="text-xs font-black text-[#f66002] hover:underline flex items-center"
-            >
-              SEE ALL <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
+        ) : isError ? (
+          <div className="rounded-xl border border-[color:var(--theme-line)] bg-[var(--white)] p-4 text-sm">
+            <p role="status">The catalog couldn’t load.</p>
+            <button type="button" onClick={() => void refetch()} className="mt-1 min-h-11 font-bold text-[color:var(--theme-orange-text)]">
+              Try again
+            </button>
           </div>
-
-          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 pt-1 -mx-3 px-3 sm:mx-0 sm:px-0">
-            {stapleProducts.map((p) => (
-              <ProductCard key={p.id} product={p} compact />
+        ) : categories.length === 0 ? (
+          <p className="text-sm text-[color:var(--theme-muted)]">No categories are available right now.</p>
+        ) : (
+          <div className="space-y-5 lg:grid lg:grid-cols-[2fr_1fr] lg:gap-6 lg:space-y-0">
+            {departments.map((department) => (
+              <section data-storefront-reveal key={department.title} className="space-y-2.5">
+                <h2 className="text-lg font-extrabold leading-tight tracking-tight text-[color:var(--theme-ink)] sm:text-xl">{department.title}</h2>
+                <div data-storefront-stagger className="grid grid-cols-4 gap-2.5">
+                  {department.categories.map((category) => (
+                    <CategoryTile key={category.id} category={category} />
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
-        </section>
-      )}
-
-      {/* Why Tikk Tikk Mart Trust Section */}
-      <section className="bg-white rounded-3xl border border-gray-100 p-5 sm:p-6 space-y-4 shadow-xs">
-        <h3 className="text-xs font-black uppercase tracking-wider text-gray-400">
-          Why Tikk Tikk Mart — Last Minute Saver
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#fff5ed] text-[#f66002] flex items-center justify-center shrink-0">
-              <Clock className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <div>
-              <h4 className="text-xs sm:text-sm font-extrabold text-gray-900">
-                10-Minute Delivery
-              </h4>
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                Dark stores located within 2 km of your doorstep.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#e8f8ee] text-[#0c831f] flex items-center justify-center shrink-0">
-              <Sparkles className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <div>
-              <h4 className="text-xs sm:text-sm font-extrabold text-gray-900">
-                Supermarket Prices
-              </h4>
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                Best discounts and MRP reductions daily.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#f0f7ff] text-[#256fef] flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <div>
-              <h4 className="text-xs sm:text-sm font-extrabold text-gray-900">
-                100% Quality Assured
-              </h4>
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                Hygienically packed and inspected fresh items.
-              </p>
-            </div>
-          </div>
-        </div>
+        )}
       </section>
+
+      {!isLoading && !isError && products.length > 0 && (
+        <section data-storefront-reveal aria-labelledby="wishlist-title" className="space-y-2">
+          <h2 id="wishlist-title" className="text-lg font-extrabold tracking-tight text-[color:var(--theme-ink)] sm:text-xl">Your wishlist</h2>
+          {savedProducts.length ? (
+            <div data-storefront-stagger className="storefront-row">{savedProducts.map(renderCard)}</div>
+          ) : (
+            <p className="rounded-xl border border-[color:var(--theme-line)] bg-[var(--peach-light)] px-4 py-3 text-sm text-[color:var(--theme-muted)]">Tap a heart to save a product here.</p>
+          )}
+        </section>
+      )}
+
+      <CollectionTiles aisles={shelves} kind="spotlight" />
+      <CollectionTiles aisles={shelves} kind="lifestyle" />
+
+      {sparseCategories.length > 0 && (
+        <section data-storefront-reveal aria-labelledby="more-categories-title" className="space-y-2.5">
+          <h2 id="more-categories-title" className="text-lg font-extrabold tracking-tight text-[color:var(--theme-ink)] sm:text-xl">Browse more categories</h2>
+          <div data-storefront-stagger className="grid grid-cols-4 gap-2.5">
+            {sparseCategories.map((category) => <CategoryTile key={category.id} category={category} />)}
+          </div>
+        </section>
+      )}
+
+      {shelves.filter(({ products }) => products.length >= 3).map(({ category, products: shelfProducts }) => (
+        <section data-storefront-reveal key={category.id} aria-labelledby={`shelf-${category.slug}`} className="space-y-1">
+          <div className="flex min-h-11 items-center justify-between gap-3">
+            <h2 id={`shelf-${category.slug}`} className="text-lg font-extrabold leading-tight tracking-tight text-[color:var(--theme-ink)] sm:text-xl">
+              {category.slug === "munchies-snacks" ? "Crunch on chips" : category.name}
+            </h2>
+            <Link
+              href={`/category/${category.slug}`}
+              aria-label={`See all ${category.name}`}
+              className="inline-flex min-h-11 shrink-0 items-center gap-0.5 text-xs font-bold text-[color:var(--theme-orange-text)] hover:underline sm:text-sm"
+            >
+              See all <ChevronRight aria-hidden="true" className="size-4" />
+            </Link>
+          </div>
+          <div data-storefront-stagger className="storefront-row">
+            {shelfProducts.map(renderCard)}
+          </div>
+        </section>
+      ))}
+      <StorefrontBackToTop />
     </div>
+  );
+}
+
+
+function HomeShelfPlaceholder({ featured = false }: { featured?: boolean }) {
+  return (
+    <div aria-hidden="true" className={featured ? "space-y-2" : "space-y-3"}>
+      <div className="relative h-5 w-36 overflow-hidden rounded bg-[var(--theme-skeleton)] storefront-skeleton sm:h-7" />
+      <div className="storefront-row">
+        {[0, 1, 2].map((index) => (
+          <div
+            key={index}
+            className={featured
+              ? "w-[44%] shrink-0 rounded-2xl border-2 border-transparent p-2.5 sm:w-[24%]"
+              : "w-[30%] min-w-27 shrink-0 rounded-2xl border border-transparent p-1.5 sm:p-2.5"}
+          >
+            {featured ? (
+              <>
+                <div className="mt-6 h-9 rounded bg-[var(--theme-skeleton)]" />
+                <div className="relative mt-2 aspect-[5/4] overflow-hidden rounded-xl bg-[var(--theme-skeleton)] storefront-skeleton" />
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-1">
+                  <div className="aspect-square max-h-22 rounded-lg bg-[var(--theme-skeleton)]" />
+                  <div className="aspect-square max-h-22 rounded-lg bg-[var(--theme-skeleton)]" />
+                </div>
+                <div className="mt-4 h-7 rounded bg-[var(--theme-skeleton)]" />
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className={featured ? "h-6" : "h-12 rounded-xl bg-[var(--theme-skeleton)]"} />
+    </div>
+  );
+}
+
+function CategoryTile({ category }: { category: Category }) {
+  return (
+    <Link href={`/category/${category.slug}`} {...pressTilt} className="press-tilt group flex min-w-0 flex-col gap-1.5 text-center">
+      <div data-storefront-tile className="relative aspect-[1.05] overflow-hidden rounded-xl bg-[var(--peach)]">
+        <CatalogImage src={category.image_url} className="object-cover" />
+      </div>
+      <span className="text-[11px] font-bold leading-tight text-[color:var(--theme-ink)] group-hover:text-[color:var(--theme-orange-text)] sm:text-sm">{category.name}</span>
+    </Link>
   );
 }

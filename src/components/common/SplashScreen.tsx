@@ -8,6 +8,7 @@ export function SplashScreen() {
   const [fading, setFading] = useState(false);
 
   useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     // Only show on first app launch in session, or when query ?splash=1 is passed
     const hasShown = sessionStorage.getItem("ttm_splash_v1");
     if (!hasShown) {

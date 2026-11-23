@@ -1,289 +1,289 @@
 "use client";
-import React, { useState } from "react";
-import { useParams } from "next/navigation";
+
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  Minus,
-  Plus,
-  Zap,
-  ShieldCheck,
-  Clock,
-  Sparkles,
-  Share2,
-} from "lucide-react";
+import { ArrowLeft, Heart, Minus, Plus, Share2, ShoppingCart } from "lucide-react";
+import { AnimatedRupees, formatRupees } from "@/components/customer/AnimatedRupees";
+import { showCustomerToast, signalStockLimit } from "@/components/customer/CustomerFeedback";
+import { getCardImage } from "@/components/customer/ProductCard";
+import { QuantityNumber } from "@/components/customer/QuantityNumber";
+import { rememberCartOrigin } from "@/lib/cartEntry";
+import { getProductData } from "@/lib/catalog/productQuery";
+import { flyToCart } from "@/lib/catalog/flyToCart";
+import { closeProductTransition, registerProductArrival } from "@/lib/catalog/productMotion";
 import { useCartStore } from "@/stores/cartStore";
-import { ProductCard } from "@/components/customer/ProductCard";
+import { useWishlistStore } from "@/stores/wishlistStore";
 import type { Product } from "@/types/db";
+import {
+  ProductDetails, ProductGallery, ProductShelf, ProductSkeleton, variantPricing,
+  type DetailedProduct, type RelatedProducts,
+} from "@/components/customer/ProductDetailSections";
+import "./product-detail.css";
+
 
 export default function ProductDetailPage() {
   const { slug } = useParams<{ slug: string }>();
-  const { storeId, items, addItem, setQty } = useCartStore();
-  const [selectedIdx, setSelectedIdx] = useState(0);
-
-  const { data: product, isLoading } = useQuery({
+  const storeId = useCartStore((state) => state.storeId);
+  const { data: product, isPending, refetch } = useQuery({
     queryKey: ["product-detail", slug, storeId],
-    queryFn: async () => {
-      const qs = storeId ? `?storeId=${storeId}` : "";
-      const res = await fetch(`/api/products/${slug}${qs}`);
-      const json = await res.json();
-      return json.data as Product;
-    },
+    queryFn: ({ signal }) => getProductData<DetailedProduct>(slug, storeId, signal),
+    staleTime: 0,
   });
 
-  // Recommended products in same category
-  const { data: categoryData } = useQuery({
-    queryKey: ["category-similars", product?.category_id, storeId],
-    enabled: Boolean(product?.category_id),
-    queryFn: async () => {
-      const qs = storeId ? `?storeId=${storeId}` : "";
-      const res = await fetch(`/api/home${qs}`);
-      const json = await res.json();
-      return (json.data?.products ?? []) as Product[];
-    },
-  });
-
-  if (isLoading) {
-    return (
-      <div className="py-16 text-center text-xs text-gray-400 font-bold uppercase tracking-wider">
-        Loading product details...
-      </div>
-    );
-  }
-
+  if (isPending) return <ProductSkeleton />;
   if (!product) {
     return (
-      <div className="max-w-md mx-auto my-8 bg-white rounded-3xl border p-8 text-center space-y-3">
-        <p className="font-bold text-gray-800">Product not found.</p>
-        <Link href="/" className="inline-block px-4 py-2 rounded-xl bg-[#0c831f] text-white text-xs font-bold">
-          Back to Store
-        </Link>
+      <div data-product-page className="product-page product-missing">
+        <h1>Product unavailable</h1>
+        <Link href="/">Browse products</Link>
       </div>
     );
   }
 
-  const variants = product.variants ?? [];
-  const variant = variants[selectedIdx] ?? variants[0];
-  const inCart = variant ? items.find((i) => i.variantId === variant.id) : undefined;
-  const price = variant ? variant.effective_price ?? variant.base_price : 0;
-  const mrp = variant?.mrp ?? price;
-  const discountPct = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+  return <ProductDetail key={product.id} product={product} storeId={storeId} refresh={refetch} />;
+}
 
-  const similarProducts = (categoryData ?? [])
-    .filter((p) => p.id !== product.id && p.category_id === product.category_id)
-    .slice(0, 5);
+function ProductDetail({ product, storeId, refresh }: {
+  product: DetailedProduct;
+  storeId: string | null;
+  refresh: () => Promise<unknown>;
+}) {
+  const router = useRouter();
+  const page = useRef<HTMLDivElement>(null);
+  const ripple = useRef<HTMLSpanElement>(null);
+  const { items, etaMinutes, serviceable } = useCartStore();
+  const saved = useWishlistStore((state) => state.productIds.includes(product.id));
+  const toggleProduct = useWishlistStore((state) => state.toggleProduct);
+  const [selectedId, setSelectedId] = useState<string>();
+  const [scrolled, setScrolled] = useState(false);
+  const variants = product.variants ?? [];
+  const variant = variants.find((item) => item.id === selectedId) ?? variants[0];
+  const { price, mrp, discount } = variantPricing(variant);
+  const stock = variant?.stock_available;
+  const orderLimit = variant?.max_qty_per_order ?? 10;
+  const maxQty = Math.min(stock ?? Infinity, orderLimit);
+  const quantity = items.find((item) => item.variantId === variant?.id)?.quantity ?? 0;
+  const cartCount = items.reduce((total, item) => total + item.quantity, 0);
+  const rating = Number(product.rating);
+  const reviews = Number(product.review_count);
+  const hasRating = rating > 0 && rating <= 5 && (product.review_count == null || reviews > 0);
+  const soldOut = !variant || maxQty <= 0;
+
+  const { data: related, isPending: relatedLoading } = useQuery({
+    queryKey: ["product-related", product.id, storeId],
+    queryFn: ({ signal }) => getProductData<RelatedProducts>(product.id, storeId, signal, true),
+  });
+  const { watched, watch } = useRestockWatch(product, storeId, refresh);
+
+  useLayoutEffect(() => {
+    const swap = registerProductArrival(product.slug);
+    if (!page.current) return;
+    if (swap) page.current.dataset.productSwap = "";
+    if (document.documentElement.hasAttribute("data-product-transition")) page.current.dataset.productShared = "";
+  }, [product.slug]);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY >= 240);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  function updateQuantity(change: -1 | 1, button: HTMLElement) {
+    if (!variant) return;
+    const { items: currentItems, setQty, addItem } = useCartStore.getState();
+    const current = currentItems.find((item) => item.variantId === variant.id)?.quantity ?? 0;
+    const next = current + change;
+    const limits = { maxQty, stockLimit: stock };
+
+    if (change > 0 && next > maxQty) {
+      if (current > maxQty) setQty(variant.id, maxQty, limits);
+      signalStockLimit(button, stock ?? Infinity, orderLimit);
+      return;
+    }
+    if (current > 0) setQty(variant.id, Math.min(next, maxQty), limits);
+    else if (next > 0) addItem({
+      variantId: variant.id, productId: product.id, name: product.name,
+      label: variant.label, image: getCardImage(product), price, mrp, ...limits,
+    });
+    if (change > 0) flyToCart(button);
+  }
+
+  function add(event: MouseEvent<HTMLButtonElement>) {
+    const dot = ripple.current;
+    if (dot && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const bounds = event.currentTarget.getBoundingClientRect();
+      dot.style.left = `${event.detail ? event.clientX - bounds.left : bounds.width / 2}px`;
+      dot.style.top = `${event.detail ? event.clientY - bounds.top : bounds.height / 2}px`;
+      dot.animate([
+        { transform: "translate(-50%, -50%) scale(0)", opacity: .45 },
+        { transform: "translate(-50%, -50%) scale(22)", opacity: 0 },
+      ], { duration: 420, easing: "ease-out" });
+    }
+    updateQuantity(1, event.currentTarget);
+  }
+
+  async function share() {
+    const url = new URL(`/product/${product.slug}`, window.location.origin).href;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(url);
+      showCustomerToast("Link copied");
+    } catch {
+      try {
+        if (!navigator.share) throw new Error("Sharing unavailable");
+        await navigator.share({ title: product.name, url });
+        showCustomerToast("Link shared");
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) showCustomerToast("Couldn’t share the link");
+      }
+    }
+  }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      {/* Back button */}
-      <div className="flex items-center justify-between">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-xs font-black text-gray-700 hover:text-black p-1"
-        >
-          <ArrowLeft className="w-4 h-4 stroke-[2.5]" /> Back
+    <div className="product-page" data-product-page ref={page}>
+      <header className="product-header" data-solid={scrolled ? "" : undefined}>
+        <button type="button" aria-label="Back" className="product-header-button"
+          onClick={() => closeProductTransition(product.slug, () => router.back(), () => router.push("/"))}>
+          <ArrowLeft aria-hidden="true" size={21} />
+        </button>
+        <span className="product-header-title" aria-hidden="true">{product.name}</span>
+        <button type="button" aria-label={saved ? "Remove from wishlist" : "Add to wishlist"}
+          aria-pressed={saved} className="product-header-button product-heart"
+          onClick={() => {
+            const wasSaved = useWishlistStore.getState().productIds.includes(product.id);
+            toggleProduct(product.id);
+            showCustomerToast(wasSaved ? "Removed from wishlist" : "Added to wishlist");
+          }}>
+          <Heart aria-hidden="true" size={21} />
+        </button>
+        <button type="button" aria-label="Share product" className="product-header-button" onClick={share}>
+          <Share2 aria-hidden="true" size={20} />
+        </button>
+        <Link href="/cart" onNavigate={rememberCartOrigin} aria-label={`Cart, ${cartCount} ${cartCount === 1 ? "item" : "items"}`}
+          className="product-header-button" data-product-cart>
+          <ShoppingCart aria-hidden="true" size={21} />
+          <span aria-hidden="true" data-product-cart-count className="product-cart-count">{cartCount}</span>
         </Link>
-      </div>
+      </header>
 
-      {/* Main Product Card */}
-      <div className="bg-white rounded-3xl border border-gray-100 p-5 sm:p-7 grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 shadow-sm">
-        {/* Left: Product Image Box */}
-        <div className="relative aspect-square rounded-2xl bg-[#f8f9fa] flex items-center justify-center p-6 border border-gray-100 overflow-hidden">
-          {/* 10 MINS Badge */}
-          <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs px-2 py-1 rounded-md shadow-2xs border border-gray-100 flex items-center gap-1">
-            <Zap className="w-3 h-3 text-[#f66002] fill-[#f66002]" />
-            <span className="text-[10px] font-black text-gray-800">10 MINS</span>
-          </div>
-
-          {discountPct > 0 && (
-            <div className="absolute bottom-3 left-3 bg-[#13193b] text-[#ffd269] text-[10px] font-black px-2 py-0.5 rounded-sm uppercase tracking-wider">
-              {discountPct}% OFF
-            </div>
-          )}
-
-          {product.images?.[0] ? (
-            <img
-              src={product.images[0]}
-              alt={product.name}
-              className="w-full h-full object-contain hover:scale-105 transition-transform duration-300"
-            />
-          ) : (
-            <span className="text-3xl">🛍️</span>
-          )}
-        </div>
-
-        {/* Right: Product Details & Purchase CTA */}
-        <div className="flex flex-col justify-between space-y-5">
-          <div className="space-y-3">
-            <div>
-              <p className="text-xs font-black text-gray-400 uppercase tracking-wider">
-                {product.brand || "TIKK TIKK MART"}
-              </p>
-              <h1 className="text-lg sm:text-2xl font-black text-gray-900 tracking-tight leading-snug mt-1">
-                {product.name}
-              </h1>
-            </div>
-
-            {/* Pack Size / Variant selection pills */}
-            {variants.length > 0 && (
-              <div className="space-y-2 pt-1">
-                <p className="text-[11px] font-black uppercase tracking-wider text-gray-500">
-                  Select Unit / Pack Size
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {variants.map((v, idx) => {
-                    const isSelected = idx === selectedIdx;
-                    return (
-                      <button
-                        key={v.id}
-                        type="button"
-                        onClick={() => setSelectedIdx(idx)}
-                        className={`px-3 py-2 rounded-xl border text-left transition-all ${
-                          isSelected
-                            ? "border-[#f66002] bg-[#fff0e6] text-[#f66002] shadow-2xs ring-1 ring-[#f66002]"
-                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        <div className="text-xs font-black">{v.label}</div>
-                        <div className="text-[11px] font-bold text-gray-900 mt-0.5">
-                          ₹{v.effective_price ?? v.base_price}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+      <div className="product-content">
+        <ProductGallery product={product} discount={discount} />
+        <div className="product-body">
+          <section aria-labelledby="product-name" className="product-info">
+            {etaMinutes != null && serviceable !== false && <span className="product-eta">Delivery in {etaMinutes} min</span>}
+            <h1 id="product-name">{product.name}</h1>
+            {hasRating && (
+              <div className="product-rating">
+                <strong aria-label={`${rating} out of 5 stars`}>★ {rating.toFixed(1)}</strong>
+                {reviews > 0 && <span>{reviews.toLocaleString("en-IN")} {reviews === 1 ? "rating" : "ratings"}</span>}
               </div>
             )}
-
-            {/* Price Box */}
-            <div className="pt-2">
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
-                  ₹{price}
-                </span>
-                {mrp > price && (
-                  <span className="text-sm sm:text-base text-gray-400 line-through font-medium">
-                    MRP ₹{mrp}
-                  </span>
-                )}
-                {discountPct > 0 && (
-                  <span className="text-xs font-black text-[#f66002] bg-[#fff0e6] px-2 py-0.5 rounded-md">
-                    Save ₹{mrp - price}
-                  </span>
-                )}
+            {variants.length > 1 && (
+              <div role="group" aria-label="Pack size" className="product-variants">
+                {variants.map((option) => (
+                  <button key={option.id} type="button" aria-pressed={option.id === variant?.id}
+                    onClick={() => setSelectedId(option.id)}>
+                    <strong>{option.label}</strong>
+                    <span>{formatRupees(variantPricing(option).price)}</span>
+                  </button>
+                ))}
               </div>
-              <p className="text-[10px] text-gray-400 mt-0.5 font-medium">
-                (Inclusive of all taxes)
-              </p>
-            </div>
-
-            {/* Blinkit 10-min Guarantee note */}
-            <div className="p-3 bg-[#fff4eb] border border-[#ffd269] rounded-2xl flex items-center gap-2.5 text-xs text-[#13193b] font-bold">
-              <Clock className="w-4 h-4 text-[#f66002] shrink-0" />
-              <span>Sourced & packaged from nearest dark store · 10 min arrival</span>
-            </div>
-          </div>
-
-          {/* Add to Cart Bar */}
-          <div className="pt-4 border-t border-gray-100 flex items-center justify-between gap-4">
-            {(variant?.stock_available ?? 99) <= 0 ? (
-              <span className="w-full py-3 rounded-2xl bg-gray-100 text-gray-400 text-center font-bold text-sm uppercase tracking-wider">
-                Out of Stock
-              </span>
-            ) : inCart ? (
-              <div className="w-full flex items-center justify-between bg-[#f66002] text-white rounded-2xl p-2 shadow-md">
-                <button
-                  type="button"
-                  onClick={() => setQty(variant.id, inCart.quantity - 1)}
-                  className="p-2 hover:bg-[#dd5500] rounded-xl transition-colors active:scale-90"
-                >
-                  <Minus className="w-4 h-4 stroke-[3]" />
-                </button>
-                <div className="text-center">
-                  <span className="text-sm font-black">{inCart.quantity} in cart</span>
-                  <p className="text-[10px] text-orange-200">Tap + to add more</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setQty(variant.id, inCart.quantity + 1)}
-                  className="p-2 hover:bg-[#dd5500] rounded-xl transition-colors active:scale-90"
-                >
-                  <Plus className="w-4 h-4 stroke-[3]" />
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() =>
-                  addItem({
-                    variantId: variant.id,
-                    productId: product.id,
-                    name: product.name,
-                    label: variant.label,
-                    image: product.images?.[0] ?? null,
-                    price,
-                    mrp: variant.mrp,
-                    maxQty: variant.max_qty_per_order ?? 10,
-                  })
-                }
-                className="w-full py-3.5 rounded-2xl bg-[#f66002] hover:bg-[#dd5500] active:scale-[0.99] text-white font-black text-sm uppercase tracking-wider transition-all shadow-md shadow-orange-500/20 flex items-center justify-center gap-2"
-              >
-                <span>Add to Cart</span>
-                <span className="font-mono text-xs opacity-90">· ₹{price}</span>
-              </button>
             )}
-          </div>
+            {variant && (
+              <>
+                <div className="product-price">
+                  <strong><AnimatedRupees value={price} duration={420} /></strong>
+                  {mrp > price && <s aria-label={`MRP ${formatRupees(mrp)}`}>{formatRupees(mrp)}</s>}
+                  {discount > 0 && <span className="product-price-discount">{discount}% off</span>}
+                </div>
+                <p className="product-tax">Inclusive of all taxes</p>
+              </>
+            )}
+          </section>
+          <ProductDetails product={product} />
+          <ProductShelf title="Similar products" products={related?.similar} loading={relatedLoading} />
+          <ProductShelf title="People also bought" products={related?.alsoBought} loading={relatedLoading} />
         </div>
       </div>
 
-      {/* Product Details & Specifications */}
-      <div className="bg-white rounded-3xl border border-gray-100 p-5 sm:p-6 space-y-4 shadow-2xs">
-        <h2 className="text-xs font-black uppercase tracking-wider text-gray-400">
-          Product Details
-        </h2>
-
-        {product.description && (
-          <div className="space-y-1">
-            <h3 className="text-xs font-extrabold text-gray-900">Description</h3>
-            <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-              {product.description}
-            </p>
+      <div className="product-buy-bar">
+        {variant && <div className="product-bar-price">Price<strong><AnimatedRupees value={price} duration={420} /></strong></div>}
+        {soldOut ? (
+          <div className="product-sold-controls">
+            <button type="button" className="product-purchase" disabled>Out of stock</button>
+            {variant && <button type="button" className="product-notify" disabled={watched.includes(variant.id)}
+              onClick={() => watch(variant.id)}>{watched.includes(variant.id) ? "Watching stock" : "Notify me"}</button>}
+          </div>
+        ) : (
+          <div className="product-buy-controls">
+            {quantity > 0 ? (
+              <div className="product-purchase product-stepper">
+                <button type="button" aria-label="Decrease quantity" onClick={(event) => updateQuantity(-1, event.currentTarget)}>
+                  <Minus aria-hidden="true" size={21} />
+                </button>
+                <QuantityNumber key={variant.id} value={quantity} />
+                <button type="button" aria-label="Increase quantity" onClick={(event) => updateQuantity(1, event.currentTarget)}>
+                  <Plus aria-hidden="true" size={21} />
+                </button>
+              </div>
+            ) : <button type="button" className="product-purchase" onClick={add}>Add to cart</button>}
+            <span className="product-ripple-mask" aria-hidden="true"><span ref={ripple} /></span>
           </div>
         )}
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2 text-xs">
-          <div className="bg-gray-50 p-3 rounded-2xl">
-            <span className="text-gray-400 font-medium">Brand</span>
-            <p className="font-bold text-gray-800 mt-0.5">{product.brand || "TikTikMart"}</p>
-          </div>
-          <div className="bg-gray-50 p-3 rounded-2xl">
-            <span className="text-gray-400 font-medium">Country of Origin</span>
-            <p className="font-bold text-gray-800 mt-0.5">India</p>
-          </div>
-          <div className="bg-gray-50 p-3 rounded-2xl">
-            <span className="text-gray-400 font-medium">Shelf Life</span>
-            <p className="font-bold text-gray-800 mt-0.5">Fresh Guarantee</p>
-          </div>
-        </div>
       </div>
-
-      {/* Similar Products Shelf */}
-      {similarProducts.length > 0 && (
-        <div className="space-y-3 pt-2">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🛒</span>
-            <h2 className="text-base font-black text-gray-900 tracking-tight">
-              Similar Products in this Category
-            </h2>
-          </div>
-          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 pt-1 -mx-3 px-3 sm:mx-0 sm:px-0">
-            {similarProducts.map((p) => (
-              <ProductCard key={p.id} product={p} compact />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
+}
+
+function useRestockWatch(product: Product, storeId: string | null, refresh: () => Promise<unknown>) {
+  const storageKey = `tiktikmart-restock:${storeId ?? "catalog"}:${product.id}`;
+  const [subscription, setSubscription] = useState({ key: "", variants: [] as string[] });
+  const watched = subscription.key === storageKey ? subscription.variants : [];
+
+  useEffect(() => {
+    let variants: string[] = [];
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
+      if (Array.isArray(stored)) variants = stored.filter((id): id is string => typeof id === "string");
+    } catch {}
+    setSubscription({ key: storageKey, variants });
+  }, [storageKey]);
+
+  function save(variants: string[]) {
+    setSubscription({ key: storageKey, variants });
+    try { localStorage.setItem(storageKey, JSON.stringify(variants)); } catch {}
+  }
+
+  useEffect(() => {
+    if (!watched.length) return;
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [refresh, watched.length]);
+
+  useEffect(() => {
+    if (subscription.key !== storageKey || !subscription.variants.length) return;
+    const inStock = (product.variants ?? []).filter((variant) =>
+      subscription.variants.includes(variant.id) && (variant.stock_available ?? 0) > 0
+      && (variant.max_qty_per_order ?? 10) > 0);
+    if (!inStock.length) return;
+    const restocked = new Set(inStock.map((variant) => variant.id));
+    const remaining = subscription.variants.filter((id) => !restocked.has(id));
+    setSubscription({ key: storageKey, variants: remaining });
+    try { localStorage.setItem(storageKey, JSON.stringify(remaining)); } catch {}
+    showCustomerToast(`${product.name} is back in stock`);
+  }, [product.name, product.variants, storageKey, subscription]);
+
+  return {
+    watched,
+    watch: (variantId: string) => {
+      if (watched.includes(variantId)) return;
+      save([...watched, variantId]);
+      showCustomerToast("We’ll let you know here when it’s back in stock");
+    },
+  };
 }

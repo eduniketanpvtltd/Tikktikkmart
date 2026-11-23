@@ -2,10 +2,13 @@
 import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
+import { deferDelete } from "@/lib/ui/deferDelete";
+import { useUndoKeys } from "@/components/ui/UndoToast";
 import { apiFetch } from "@/lib/api/client";
 
 export default function AdminCatalogPage() {
   const qc = useQueryClient();
+  const undoKeys = useUndoKeys();
   const [catForm, setCatForm] = useState({ name: "", slug: "", image_url: "" });
   const [prodForm, setProdForm] = useState({
     category_id: "",
@@ -65,14 +68,14 @@ export default function AdminCatalogPage() {
     }
   };
 
-  const deleteCat = async (id: string) => {
-    await apiFetch(`/api/admin/categories?id=${id}`, { method: "DELETE" });
-    qc.invalidateQueries({ queryKey: ["admin-categories"] });
+  const deleteCat = (id: string) => {
+    deferDelete<typeof categories>(qc, ["admin-categories"], `category:${id}`,
+      `/api/admin/categories?id=${encodeURIComponent(id)}`, "Category", (items) => items.filter((item) => item.id !== id));
   };
 
-  const deleteProd = async (id: string) => {
-    await apiFetch(`/api/admin/products?id=${id}`, { method: "DELETE" });
-    qc.invalidateQueries({ queryKey: ["admin-products"] });
+  const deleteProd = (id: string) => {
+    deferDelete<typeof products>(qc, ["admin-products"], `product:${id}`,
+      `/api/admin/products?id=${encodeURIComponent(id)}`, "Product", (items) => items.filter((item) => item.id !== id));
   };
 
   return (
@@ -114,7 +117,7 @@ export default function AdminCatalogPage() {
             className="w-full border rounded-xl px-3 py-2 text-sm bg-white"
           >
             <option value="">Select Category</option>
-            {categories.map((c: any) => (
+            {categories.filter((c) => !undoKeys.has(`category:${c.id}`)).map((c: any) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
@@ -175,10 +178,10 @@ export default function AdminCatalogPage() {
       <div className="bg-white rounded-2xl border p-4 space-y-2">
         <h2 className="font-bold text-sm">Categories ({categories.length})</h2>
         <div className="flex flex-wrap gap-2">
-          {categories.map((c: any) => (
+          {categories.filter((c) => !undoKeys.has(`category:${c.id}`)).map((c: any) => (
             <span key={c.id} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-100 text-xs font-bold">
               {c.name}
-              <button type="button" onClick={() => deleteCat(c.id)} className="text-red-500">
+              <button type="button" onClick={() => deleteCat(c.id)} aria-label={`Remove ${c.name}`} className="grid size-11 place-items-center text-red-500">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </span>
@@ -189,7 +192,7 @@ export default function AdminCatalogPage() {
       <div className="bg-white rounded-2xl border p-4 space-y-2">
         <h2 className="font-bold text-sm">Products ({products.length})</h2>
         <div className="divide-y">
-          {products.map((p: any) => (
+          {products.filter((p) => !undoKeys.has(`product:${p.id}`)).map((p: any) => (
             <div key={p.id} className="py-2 flex items-center justify-between text-xs">
               <div>
                 <p className="font-bold">{p.name}</p>
@@ -198,7 +201,7 @@ export default function AdminCatalogPage() {
                   {(p.variants ?? []).map((v: any) => `${v.label}: ₹${v.base_price}`).join(", ")}
                 </p>
               </div>
-              <button type="button" onClick={() => deleteProd(p.id)} className="text-red-600 p-1">
+              <button type="button" onClick={() => deleteProd(p.id)} aria-label={`Remove ${p.name}`} className="grid size-11 place-items-center text-red-600">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>

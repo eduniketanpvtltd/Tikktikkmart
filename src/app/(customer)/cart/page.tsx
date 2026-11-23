@@ -1,477 +1,320 @@
 "use client";
-import React, { useState } from "react";
-import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import {
-  Minus,
-  Plus,
-  Tag,
-  Trash2,
-  ArrowRight,
-  Zap,
-  Sparkles,
-  Heart,
-  Info,
-} from "lucide-react";
-import { useCartStore } from "@/stores/cartStore";
-import { ProductCard } from "@/components/customer/ProductCard";
-import type { BillBreakdown, Product } from "@/types/db";
 
-const QUICK_COUPONS = [
-  { code: "WELCOME50", desc: "Flat ₹50 OFF (Min ₹199)", minOrder: 199 },
-  { code: "TIKKTIKK20", desc: "20% OFF on munchies", minOrder: 99 },
-];
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, ChevronRight, Clock3, MapPin, Tag } from "lucide-react";
+import { useCartStore, type CartItem } from "@/stores/cartStore";
+import { CartRow } from "@/components/customer/CartRows";
+import { CartSuggestions } from "@/components/customer/CartSuggestions";
+import { EmptyCartBasket, FreeDeliveryProgress } from "@/components/customer/CartIndicators";
+import { AnimatedRupees, formatRupees } from "@/components/customer/AnimatedRupees";
+import { showCustomerToast } from "@/components/customer/CustomerFeedback";
+import { consumeProductCartOrigin, getCartOrigin } from "@/lib/cartEntry";
+import { cartQuoteKey, PILOT_STORE_ID, requestCartQuote, useCartQuote } from "@/lib/pricing/useCartQuote";
+import {
+  DEFAULT_DELIVERY_FEE,
+  DEFAULT_FREE_DELIVERY_ABOVE,
+  DEFAULT_HANDLING_FEE,
+  DEFAULT_MIN_CART_VALUE,
+  DEFAULT_SMALL_CART_FEE,
+} from "@/lib/pricing/constants";
+import type { BillBreakdown, Product, ProductVariant } from "@/types/db";
+
+const welcomeCoupon = "WELCOME50";
+
+function estimateBill(items: CartItem[], couponCode: string | null, tip: number): BillBreakdown {
+  const itemsTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const mrpTotal = items.reduce((sum, item) => sum + item.mrp * item.quantity, 0);
+  const handlingFee = itemsTotal > 0 ? DEFAULT_HANDLING_FEE : 0;
+  const deliveryFee = itemsTotal > 0 && itemsTotal < DEFAULT_FREE_DELIVERY_ABOVE ? DEFAULT_DELIVERY_FEE : 0;
+  const smallCartFee = itemsTotal > 0 && itemsTotal < DEFAULT_MIN_CART_VALUE ? DEFAULT_SMALL_CART_FEE : 0;
+  const discount = couponCode === welcomeCoupon && itemsTotal >= DEFAULT_FREE_DELIVERY_ABOVE ? 50 : 0;
+  const savings = Math.max(0, mrpTotal - itemsTotal + discount);
+
+  return {
+    itemsTotal, mrpTotal, handlingFee, deliveryFee, smallCartFee, discount, savings,
+    tip,
+    taxTotal: 0,
+    grandTotal: Math.max(0, itemsTotal - discount + handlingFee + deliveryFee + smallCartFee + tip),
+    couponCode: discount ? welcomeCoupon : null,
+  };
+}
 
 export default function CartPage() {
-  const { storeId, items, couponCode, tip, location, setQty, setCoupon, setTip, clearCart } =
-    useCartStore();
-  const [couponInput, setCouponInput] = useState(couponCode ?? "");
-  const [donateFeedingIndia, setDonateFeedingIndia] = useState(false);
+  const router = useRouter();
+  const { storeId, items, couponCode, tip, location, etaMinutes, serviceable, setCoupon, setTip } = useCartStore();
+  const queryClient = useQueryClient();
+  const effectiveStore = storeId || PILOT_STORE_ID;
+  const count = items.reduce((sum, item) => sum + item.quantity, 0);
+  const [hasShadow, setHasShadow] = useState(false);
+  const [backHref, setBackHref] = useState("/");
+  const openedFromProduct = useRef(false);
+  const [couponOpen, setCouponOpen] = useState(false);
+  const [couponDraft, setCouponDraft] = useState<string>();
+  const [applying, setApplying] = useState(false);
+  const { data: quote } = useCartQuote();
 
-  const effectiveStoreId = storeId || "11111111-1111-1111-1111-111111111111";
-
-  // Bill quote
-  const { data: quote } = useQuery({
-    queryKey: ["cart-quote", effectiveStoreId, items, couponCode, tip],
-    enabled: items.length > 0,
-    queryFn: async () => {
-      const res = await fetch("/api/cart/quote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          storeId: effectiveStoreId,
-          items: items.map((i) => ({ variant_id: i.variantId, quantity: i.quantity })),
-          couponCode,
-          tip,
-        }),
-      });
-      const json = await res.json();
-      return json?.data as { bill: BillBreakdown } | undefined;
+  const { data: catalog } = useQuery({
+    queryKey: ["home-recommended", effectiveStore],
+    enabled: count > 0,
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`/api/home?storeId=${encodeURIComponent(effectiveStore)}`, { signal });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error("Suggestions unavailable");
+      return result.data as { products: Product[] };
     },
   });
 
-  // Recommended "Before you checkout" products
-  const { data: homeData } = useQuery({
-    queryKey: ["home-recommended", effectiveStoreId],
-    queryFn: async () => {
-      const url = `/api/home?storeId=${effectiveStoreId}`;
-      const res = await fetch(url);
-      const json = await res.json();
-      return json.data as { products: Product[] };
-    },
-  });
+  useEffect(() => {
+    openedFromProduct.current ||= consumeProductCartOrigin();
+    setBackHref(getCartOrigin());
+    const update = () => setHasShadow(window.scrollY > 8);
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    return () => window.removeEventListener("scroll", update);
+  }, []);
 
-  if (!items.length) {
-    return (
-      <div className="max-w-md mx-auto my-8 bg-white rounded-3xl border border-gray-100 p-8 text-center space-y-5 shadow-sm">
-        <div className="w-20 h-20 rounded-full bg-[#fff5ed] flex items-center justify-center mx-auto text-3xl">
-          🛍️
-        </div>
-        <div className="space-y-1">
-          <h1 className="text-xl font-black text-gray-900">Your cart is empty</h1>
-          <p className="text-xs text-gray-500 max-w-xs mx-auto">
-            Your daily essentials and late-night cravings delivered to your doorstep in 10 minutes.
-          </p>
-        </div>
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#f66002] hover:bg-[#dc5400] text-white text-xs font-black uppercase tracking-wider transition-all shadow-md active:scale-95"
-        >
-          Browse Products <ArrowRight className="w-4 h-4" />
-        </Link>
-      </div>
-    );
+  const bill = quote?.bill ?? estimateBill(items, couponCode, tip);
+  const variants = new Map(catalog?.products.flatMap((product) =>
+    (product.variants ?? []).map((variant) => [variant.id, variant] as const)));
+
+  async function applyCoupon(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (applying) return;
+    const code = (couponDraft ?? couponCode ?? "").trim().toUpperCase();
+    if (code !== welcomeCoupon) {
+      showCustomerToast("Invalid coupon code");
+      return;
+    }
+
+    const snapshot = useCartStore.getState();
+    setApplying(true);
+    try {
+      const result = await requestCartQuote(effectiveStore, snapshot.items, code, snapshot.tip);
+      const current = useCartStore.getState();
+      if (current.items !== snapshot.items || current.storeId !== snapshot.storeId || current.tip !== snapshot.tip || current.couponCode !== snapshot.couponCode) {
+        showCustomerToast("Cart changed. Try applying the coupon again.");
+        return;
+      }
+      if (result.bill.couponCode !== code || result.bill.couponError) {
+        showCustomerToast(result.bill.couponError || "Coupon unavailable for this cart");
+        return;
+      }
+      queryClient.setQueryData(cartQuoteKey(effectiveStore, snapshot.items, code, snapshot.tip), result);
+      setCoupon(code);
+      setCouponDraft(code);
+      setCouponOpen(false);
+      showCustomerToast(`${formatRupees(result.bill.discount)} coupon applied`);
+    } catch {
+      showCustomerToast("Couldn’t check the coupon. Try again.");
+    } finally {
+      setApplying(false);
+    }
   }
 
-  // Instant client-side computation fallback so Bill Details is NEVER stuck
-  const rawItemsTotal = items.reduce((acc, i) => acc + i.price * i.quantity, 0);
-  const rawMrpTotal = items.reduce((acc, i) => acc + (i.mrp || i.price) * i.quantity, 0);
-  const rawDeliveryFee = rawItemsTotal >= 199 ? 0 : 25;
-  const rawHandlingFee = 5;
-  const rawSmallCartFee = rawItemsTotal < 99 ? 15 : 0;
-  const rawDiscount = couponCode === "WELCOME50" && rawItemsTotal >= 199 ? 50 : 0;
-  const rawGrandTotal = Math.max(0, rawItemsTotal + rawDeliveryFee + rawHandlingFee + rawSmallCartFee + tip - rawDiscount);
+  return (
+    <div data-cart-page className="cart-review-page mx-auto min-h-svh max-w-[540px] bg-[var(--white)] text-[color:var(--theme-ink)]">
+      <header className="cart-review-header cart-screen-entry sticky top-0 z-30 flex items-center gap-3 bg-[var(--white)]" data-shadow={hasShadow ? "" : undefined}>
+        <Link href={backHref} replace aria-label="Back" className="grid size-10 shrink-0 place-items-center rounded-full bg-[var(--peach-light)] text-[color:var(--theme-orange-text)] hover:bg-[var(--peach)]"
+          onNavigate={(event) => {
+            if (!openedFromProduct.current) return;
+            event.preventDefault();
+            router.back();
+          }}>
+          <ArrowLeft aria-hidden="true" className="size-5" />
+        </Link>
+        <div>
+          <h1 className="text-[19px] leading-tight font-extrabold tracking-tight">My cart</h1>
+          <p className="mt-0.5 text-xs text-[color:var(--theme-muted)]">{count} {count === 1 ? "item" : "items"}</p>
+        </div>
+      </header>
 
-  const bill: BillBreakdown = quote?.bill ?? {
-    itemsTotal: rawItemsTotal,
-    mrpTotal: rawMrpTotal,
-    savings: rawMrpTotal - rawItemsTotal + rawDiscount,
-    deliveryFee: rawDeliveryFee,
-    handlingFee: rawHandlingFee,
-    smallCartFee: rawSmallCartFee,
-    tip,
-    discount: rawDiscount,
-    taxTotal: Math.round(rawItemsTotal * 0.05),
-    grandTotal: rawGrandTotal,
-    couponCode: couponCode ?? null,
-  };
+      {count > 0 ? (
+        <div className="cart-screen-entry space-y-3 px-[14px] pt-3">
+          <section aria-labelledby="cart-delivery" className="cart-review-card">
+            <div className="flex items-center gap-3 p-[14px]">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--peach-light)] text-[color:var(--theme-orange-text)]">
+                <Clock3 aria-hidden="true" className="cart-delivery-clock size-5" />
+              </span>
+              <div>
+                <h2 id="cart-delivery" className="text-base leading-tight font-extrabold">
+                  {serviceable === false ? "Choose a delivery address" : `Delivery in ${etaMinutes ?? 20} minutes`}
+                </h2>
+                <p className="mt-1 text-xs text-[color:var(--theme-muted)]">Shipment of {count} {count === 1 ? "item" : "items"}</p>
+              </div>
+            </div>
+            <FreeDeliveryProgress subtotal={bill.itemsTotal} />
+          </section>
 
-  const itemsTotal = bill.itemsTotal;
-  const freeDeliveryThreshold = 199;
-  const amountNeededForFreeDelivery = Math.max(0, freeDeliveryThreshold - itemsTotal);
-  const progressPct = Math.min(100, Math.round((itemsTotal / freeDeliveryThreshold) * 100));
+          <CartItems items={items} variants={variants} />
 
-  const cartVariantIds = new Set(items.map((i) => i.variantId));
-  const suggestedProducts = (homeData?.products ?? [])
-    .filter((p) => p.variants?.some((v) => !cartVariantIds.has(v.id)))
-    .slice(0, 6);
+          {catalog && <CartSuggestions key={effectiveStore} products={catalog.products} />}
 
-  const finalGrandTotal = (bill.grandTotal ?? itemsTotal) + (donateFeedingIndia ? 2 : 0);
+          <section aria-label="Coupons and delivery address" className="cart-review-card">
+            <button
+              type="button"
+              aria-expanded={couponOpen}
+              aria-controls="cart-coupon-form"
+              onClick={() => setCouponOpen((open) => !open)}
+              className="flex w-full items-center gap-3 px-[14px] py-3.5 text-left hover:bg-[var(--peach-light)]"
+            >
+              <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[var(--peach-light)] text-[color:var(--theme-orange-text)]"><Tag aria-hidden="true" className="size-4" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold">Use coupons</span>
+                <span className="mt-0.5 block text-xs text-[color:var(--theme-muted)]">
+                  {bill.couponCode ? `${bill.couponCode} applied` : bill.couponError || "Save ₹50 with WELCOME50 on eligible orders"}
+                </span>
+              </span>
+              <ChevronRight aria-hidden="true" className={`size-5 shrink-0 text-[color:var(--theme-muted)] motion-safe:transition-transform ${couponOpen ? "rotate-90" : ""}`} />
+            </button>
+
+            <form id="cart-coupon-form" hidden={!couponOpen} onSubmit={applyCoupon}>
+              <div className="flex flex-wrap gap-2 px-[14px] pb-[14px]">
+                <input
+                  type="text"
+                  aria-label="Coupon code"
+                  autoCapitalize="characters"
+                  maxLength={32}
+                  value={couponDraft ?? couponCode ?? ""}
+                  onChange={(event) => setCouponDraft(event.target.value)}
+                  placeholder="Enter coupon code"
+                  className="h-11 min-w-0 flex-1 rounded-xl border border-[color:var(--theme-line)] bg-[var(--peach-light)] px-3 text-base font-semibold focus:outline-2 focus:outline-[color:var(--border-orange)]/60"
+                />
+                <button type="submit" disabled={applying} className="min-h-11 rounded-xl bg-[var(--navy)] px-4 text-sm font-bold text-white disabled:opacity-60">
+                  {applying ? "Checking…" : "Apply"}
+                </button>
+                {couponCode && <button type="button" onClick={() => { setCoupon(null); setCouponDraft(""); }} className="w-full text-left text-xs font-bold text-[color:var(--theme-orange-text)]">Remove coupon</button>}
+              </div>
+            </form>
+
+            <Link href="/checkout#delivery-address" className="flex items-center gap-3 border-t border-[color:var(--theme-line)] px-[14px] py-3.5 hover:bg-[var(--peach-light)]">
+              <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[var(--peach-light)] text-[color:var(--theme-orange-text)]"><MapPin aria-hidden="true" className="size-4" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold">Delivery address</span>
+                <span className="mt-0.5 block truncate text-xs text-[color:var(--theme-muted)]">{location?.address || "Select an address at checkout"}</span>
+              </span>
+              <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-[color:var(--theme-muted)]" />
+            </Link>
+          </section>
+
+          <section aria-labelledby="cart-bill" className="cart-review-card p-[14px]">
+            <h2 id="cart-bill" className="mb-2 text-[15px] font-extrabold">Bill details</h2>
+            <dl className="space-y-2.5 text-[13px]">
+              <BillRow label="Items total">
+                {bill.mrpTotal > bill.itemsTotal && <s className="mr-1.5 text-xs font-normal text-[color:var(--theme-muted)]">{formatRupees(bill.mrpTotal)}</s>}
+                <AnimatedRupees value={bill.itemsTotal} />
+              </BillRow>
+              <BillRow label="Delivery charge">
+                {bill.deliveryFee === 0 ? <span className="font-extrabold text-[color:var(--theme-success)]">FREE</span> : formatRupees(bill.deliveryFee)}
+              </BillRow>
+              <BillRow label="Handling charge">{formatRupees(bill.handlingFee)}</BillRow>
+              {bill.smallCartFee > 0 && <BillRow label="Small cart fee">{formatRupees(bill.smallCartFee)}</BillRow>}
+              {bill.tip > 0 && (
+                <BillRow label={<span className="flex items-center gap-2">Rider tip <button type="button" onClick={() => setTip(0)} className="text-xs font-semibold text-[color:var(--theme-orange-text)] underline">Remove</button></span>}>
+                  {formatRupees(bill.tip)}
+                </BillRow>
+              )}
+              {bill.couponCode && bill.discount > 0 && <BillRow label="Coupon discount"><span className="text-[color:var(--theme-success)]">−{formatRupees(bill.discount)}</span></BillRow>}
+              <div className="flex items-baseline justify-between gap-3 border-t border-dashed border-[color:var(--theme-line)] pt-3 text-base font-extrabold">
+                <dt>Grand total</dt>
+                <dd className="text-lg"><AnimatedRupees value={bill.grandTotal} /></dd>
+              </div>
+              <div className="flex items-center justify-between gap-2 rounded-xl bg-[var(--peach-light)] px-3 py-2.5 text-xs font-bold">
+                <dt>Your total savings</dt>
+                <dd><AnimatedRupees value={bill.savings} /></dd>
+              </div>
+            </dl>
+          </section>
+
+          <section aria-labelledby="cart-policy" className="cart-review-card p-[14px] text-xs leading-relaxed text-[color:var(--theme-muted)]">
+            <h2 id="cart-policy" className="font-bold text-[color:var(--theme-ink)]">Cancellation policy</h2>
+            <p>Orders can be cancelled until the store packs them.</p>
+          </section>
+        </div>
+      ) : (
+        <div className="cart-screen-entry space-y-4 px-[14px] pt-22 text-center">
+          <EmptyCartBasket />
+          <h2 className="text-lg font-extrabold">Your cart is empty</h2>
+          <Link href="/" className="inline-flex min-h-11 items-center justify-center rounded-[14px] border border-[color:var(--theme-line)] bg-[var(--white)] px-5 text-sm font-bold text-[color:var(--theme-orange-text)] hover:bg-[var(--peach-light)]">
+            Browse products
+          </Link>
+        </div>
+      )}
+
+      <CheckoutBar total={count > 0 ? bill.grandTotal : 0} hidden={count === 0} checkingCoupon={applying} />
+    </div>
+  );
+}
+
+function CartItems({ items, variants }: { items: CartItem[]; variants: Map<string, ProductVariant> }) {
+  const [initial] = useState(() => new Map(items.map(({ variantId }, index) => [variantId, index])));
+  return (
+    <section aria-label="Cart items" className="cart-review-card">
+      {items.map((item) => {
+        const variant = variants.get(item.variantId);
+        return <CartRow key={item.variantId} item={item} initialIndex={initial.get(item.variantId)} stock={variant?.stock_available} orderLimit={variant?.max_qty_per_order} />;
+      })}
+    </section>
+  );
+}
+
+function BillRow({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="text-[color:var(--theme-muted)]">{label}</dt>
+      <dd className="shrink-0 font-bold tabular-nums">{children}</dd>
+    </div>
+  );
+}
+
+function CheckoutBar({ total, hidden, checkingCoupon }: { total: number; hidden: boolean; checkingCoupon: boolean }) {
+  const router = useRouter();
+  const ripple = useRef<HTMLSpanElement>(null);
+  const shouldDelay = useRef(false);
+  const timer = useRef<number>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-5 items-start">
-      {/* Left Column: Delivery banner, items, recommendations, tip, coupon */}
-      <div className="space-y-4">
-        {/* Delivery ETA Header */}
-        <div className="bg-[#fff5ed] border border-[#ffd8c2] rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-2xs">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#f66002] text-white flex items-center justify-center shrink-0 shadow-2xs">
-              <Zap className="w-5 h-5 fill-white" />
-            </div>
-            <div>
-              <p className="text-xs font-black text-[#f66002] tracking-tight">
-                DELIVERY IN 10-15 MINS · LAST MINUTE SAVER
-              </p>
-              <p className="text-[11px] text-gray-600 truncate max-w-[220px] sm:max-w-md">
-                {location?.address ? `Delivering to: ${location.address}` : "Park Street Dark Store"}
-              </p>
-            </div>
-          </div>
-          <span className="text-[10px] font-black uppercase bg-white text-[#f66002] px-2 py-1 rounded-md border border-[#ffd8c2] shrink-0">
-            Express
-          </span>
-        </div>
-
-        {/* Free Delivery Goal Tracker */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-2 shadow-2xs">
-          <div className="flex items-center justify-between text-xs">
-            {amountNeededForFreeDelivery > 0 ? (
-              <span className="font-bold text-gray-800">
-                Add <span className="text-[#f66002] font-black">₹{amountNeededForFreeDelivery}</span> more for <span className="text-[#f66002] font-black">FREE delivery</span>
-              </span>
-            ) : (
-              <span className="font-black text-[#0c831f] flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" /> Yay! You unlocked FREE delivery
-              </span>
-            )}
-            <span className="text-[11px] font-bold text-gray-400">{progressPct}%</span>
-          </div>
-          <div className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
-            <div
-              className="h-full bg-[#f66002] transition-all duration-300 rounded-full"
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Cart Items List */}
-        <div className="bg-white rounded-3xl border border-gray-100 divide-y divide-gray-100 shadow-2xs overflow-hidden">
-          <div className="px-4 py-3 flex items-center justify-between bg-gray-50/50">
-            <h2 className="font-black text-xs uppercase tracking-wider text-gray-500">
-              Items in Cart ({items.length})
-            </h2>
-            <button
-              type="button"
-              onClick={clearCart}
-              className="text-[11px] font-bold text-red-600 hover:text-red-700 inline-flex items-center gap-1"
-            >
-              <Trash2 className="w-3 h-3" /> Clear Cart
-            </button>
-          </div>
-
-          {items.map((item) => (
-            <div key={item.variantId} className="p-3.5 sm:p-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-14 h-14 rounded-2xl bg-gray-50 p-1 flex items-center justify-center shrink-0 border border-gray-100">
-                  {item.image ? (
-                    <img src={item.image} alt={item.name} className="w-full h-full object-contain" />
-                  ) : (
-                    <span className="text-xl">🛍️</span>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-xs sm:text-sm font-extrabold text-gray-900 truncate">
-                    {item.name}
-                  </h3>
-                  <p className="text-[11px] font-medium text-gray-500">{item.label}</p>
-                  <div className="flex items-baseline gap-1 mt-0.5">
-                    <span className="text-xs sm:text-sm font-black text-gray-900">
-                      ₹{item.price * item.quantity}
-                    </span>
-                    {item.mrp > item.price && (
-                      <span className="text-[10px] text-gray-400 line-through">
-                        ₹{item.mrp * item.quantity}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Tikk Tikk Mart Stepper */}
-              <div className="inline-flex items-center bg-[#f66002] text-white rounded-xl overflow-hidden shadow-xs shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setQty(item.variantId, item.quantity - 1)}
-                  className="p-1.5 hover:bg-[#dc5400] active:scale-90 transition-transform"
-                >
-                  <Minus className="w-3 h-3 stroke-[3]" />
-                </button>
-                <span className="px-2 text-xs font-black min-w-[20px] text-center select-none">
-                  {item.quantity}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setQty(item.variantId, item.quantity + 1)}
-                  className="p-1.5 hover:bg-[#dc5400] active:scale-90 transition-transform"
-                >
-                  <Plus className="w-3 h-3 stroke-[3]" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Missed Something / Recommended Shelf */}
-        {suggestedProducts.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-1.5 px-1">
-              <span className="text-base">⚡</span>
-              <h2 className="text-sm font-black text-gray-900 tracking-tight">
-                Before you checkout / Missed something?
-              </h2>
-            </div>
-            <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 pt-1 -mx-3 px-3 sm:mx-0 sm:px-0">
-              {suggestedProducts.map((p) => (
-                <ProductCard key={p.id} product={p} compact />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Apply Coupon Card */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-4 space-y-3 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
-              <Tag className="w-4 h-4 text-[#f66002]" /> Coupons & Offers
-            </span>
-            {couponCode && (
-              <span className="text-[10px] font-black bg-[#fff5ed] text-[#f66002] px-2 py-0.5 rounded-full">
-                Applied
-              </span>
-            )}
-          </div>
-
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={couponInput}
-              onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-              placeholder="Enter coupon code"
-              className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold uppercase placeholder:normal-case placeholder:font-normal focus:outline-none focus:border-[#f66002]"
-            />
-            <button
-              type="button"
-              onClick={() => setCoupon(couponInput.trim() || null)}
-              className="px-4 py-2 rounded-xl bg-[#13193b] hover:bg-black text-white text-xs font-black uppercase tracking-wider transition-colors"
-            >
-              Apply
-            </button>
-            {couponCode && (
-              <button
-                type="button"
-                onClick={() => {
-                  setCouponInput("");
-                  setCoupon(null);
-                }}
-                className="px-3 py-2 rounded-xl border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50"
-              >
-                Remove
-              </button>
-            )}
-          </div>
-
-          {/* Quick coupon suggestion chips */}
-          <div className="flex flex-wrap gap-2 pt-1">
-            {QUICK_COUPONS.map((qc) => (
-              <button
-                key={qc.code}
-                type="button"
-                onClick={() => {
-                  setCouponInput(qc.code);
-                  setCoupon(qc.code);
-                }}
-                className={`text-[11px] font-extrabold px-2.5 py-1 rounded-lg border transition-all text-left flex items-center gap-1.5 ${
-                  couponCode === qc.code
-                    ? "bg-[#fff5ed] border-[#f66002] text-[#f66002]"
-                    : "bg-gray-50 border-gray-200 text-gray-700 hover:border-gray-300"
-                }`}
-              >
-                <span className="font-mono">{qc.code}</span>
-                <span className="text-[10px] text-gray-500 font-medium">{qc.desc}</span>
-              </button>
-            ))}
-          </div>
-
-          {bill?.couponError && (
-            <p className="text-xs font-bold text-red-600">{bill.couponError}</p>
-          )}
-          {bill?.couponCode && !bill?.couponError && (
-            <p className="text-xs font-bold text-[#0c831f]">
-              🎉 Coupon {bill.couponCode} applied! Saved ₹{bill.discount}
-            </p>
-          )}
-        </div>
-
-        {/* Tip Delivery Partner Card */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-4 space-y-2.5 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-xs sm:text-sm font-extrabold text-gray-900">
-                Tip your delivery rider
-              </h3>
-              <p className="text-[11px] text-gray-500">
-                100% of the tip goes directly to the partner.
-              </p>
-            </div>
-            <span className="text-xl">🛵</span>
-          </div>
-
-          <div className="flex gap-2">
-            {[0, 10, 20, 30, 50].map((amt) => (
-              <button
-                key={amt}
-                type="button"
-                onClick={() => setTip(amt)}
-                className={`flex-1 py-1.5 rounded-xl border text-xs font-black transition-all ${
-                  tip === amt
-                    ? "bg-[#f66002] text-white border-[#f66002] shadow-2xs"
-                    : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                {amt === 0 ? "None" : `₹${amt}`}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Feeding India / Micro Donation Checkbox */}
-        <label className="bg-white rounded-2xl border border-gray-100 p-3.5 flex items-center justify-between gap-3 cursor-pointer shadow-2xs select-none">
-          <div className="flex items-center gap-2.5">
-            <Heart className="w-4 h-4 text-red-500 fill-red-500 shrink-0" />
-            <div className="text-xs">
-              <span className="font-extrabold text-gray-900">Feeding India donation</span>
-              <p className="text-[11px] text-gray-500">Help feed a child with every grocery order</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-black text-gray-800">₹2</span>
-            <input
-              type="checkbox"
-              checked={donateFeedingIndia}
-              onChange={(e) => setDonateFeedingIndia(e.target.checked)}
-              className="w-4 h-4 accent-[#f66002] rounded"
-            />
-          </div>
-        </label>
-
-        {/* Cancellation Policy Banner */}
-        <div className="bg-gray-50 rounded-2xl p-3 text-[11px] text-gray-500 flex items-start gap-2 border border-gray-100">
-          <Info className="w-3.5 h-3.5 text-gray-400 shrink-0 mt-0.5" />
-          <span>
-            Orders cannot be cancelled once packed by dark store staff to maintain our 10-minute delivery promise.
-          </span>
-        </div>
+    <div data-cart-checkout-bar data-empty={hidden ? "" : undefined} aria-hidden={hidden} inert={hidden}
+      className="cart-checkout-bar fixed inset-x-0 bottom-0 z-40 mx-auto flex w-full max-w-[540px] items-center gap-4 rounded-t-[20px] bg-[var(--white)] shadow-[0_-5px_19px_rgba(19,25,59,0.13)]"
+    >
+      <div className="min-w-17">
+        <p className="text-xs text-[color:var(--theme-muted)]">Total</p>
+        <p className="text-xl font-black leading-tight"><AnimatedRupees value={total} /></p>
       </div>
-
-      {/* Right Column: Sticky Bill Breakdown & Proceed CTA */}
-      <aside className="bg-white rounded-3xl border border-gray-100 p-5 space-y-4 shadow-sm lg:sticky lg:top-24">
-        <h2 className="text-sm font-black uppercase tracking-wider text-gray-800 border-b pb-2">
-          Bill Details
-        </h2>
-
-        {bill ? (
-          <div className="space-y-2.5 text-xs sm:text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Items Total (MRP)</span>
-              <span className="font-medium">₹{bill.mrpTotal}</span>
-            </div>
-
-            {bill.mrpTotal > bill.itemsTotal && (
-              <div className="flex justify-between text-[#0c831f] font-bold">
-                <span>Product Discount</span>
-                <span>−₹{(bill.mrpTotal - bill.itemsTotal).toFixed(0)}</span>
-              </div>
-            )}
-
-            <div className="flex justify-between">
-              <span className="text-gray-600">Delivery Partner Fee</span>
-              <span>
-                {bill.deliveryFee === 0 ? (
-                  <span className="text-[#0c831f] font-black">FREE</span>
-                ) : (
-                  `₹${bill.deliveryFee}`
-                )}
-              </span>
-            </div>
-
-            <div className="flex justify-between">
-              <span className="text-gray-600 flex items-center gap-1">
-                Handling Charge <span className="text-[10px] text-gray-400">(bag & hygiene)</span>
-              </span>
-              <span className="font-medium">₹{bill.handlingFee}</span>
-            </div>
-
-            {bill.smallCartFee > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Small Cart Fee</span>
-                <span className="font-medium">₹{bill.smallCartFee}</span>
-              </div>
-            )}
-
-            {bill.tip > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Rider Tip</span>
-                <span className="font-bold text-gray-800">₹{bill.tip}</span>
-              </div>
-            )}
-
-            {donateFeedingIndia && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Feeding India</span>
-                <span className="font-bold text-gray-800">₹2</span>
-              </div>
-            )}
-
-            {bill.discount > 0 && (
-              <div className="flex justify-between text-[#0c831f] font-black bg-[#e8f8ee] p-2 rounded-xl">
-                <span>Coupon ({bill.couponCode})</span>
-                <span>−₹{bill.discount}</span>
-              </div>
-            )}
-
-            <div className="border-t pt-3 flex justify-between items-baseline font-black text-base sm:text-lg text-gray-900">
-              <span>To Pay</span>
-              <span className="tracking-tight text-[#f66002]">₹{finalGrandTotal.toFixed(0)}</span>
-            </div>
-
-            <p className="text-[10px] text-gray-400">
-              Inclusive of ₹{bill.taxTotal} GST and all dark store handling fees.
-            </p>
-          </div>
-        ) : (
-          <div className="py-4 text-center text-xs text-gray-400">Calculating your bill...</div>
-        )}
-
-        <Link
-          href="/checkout"
-          className="w-full flex items-center justify-between px-5 py-3.5 rounded-2xl bg-[#f66002] hover:bg-[#dc5400] active:scale-[0.99] text-white font-black text-sm tracking-wide uppercase transition-all shadow-md"
-        >
-          <span>Proceed to Pay</span>
-          <span className="flex items-center gap-1 font-mono">
-            ₹{finalGrandTotal.toFixed(0)} <ArrowRight className="w-4 h-4" />
-          </span>
-        </Link>
-      </aside>
+      <Link
+        href="/checkout"
+        aria-disabled={checkingCoupon}
+        className="relative flex h-[52px] min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-[14px] bg-[var(--theme-orange-fill)] px-3 text-[15px] font-bold text-white hover:bg-[var(--theme-orange-hover)] aria-disabled:opacity-60 motion-safe:transition-transform motion-safe:active:scale-[.97]"
+        onClick={(event) => {
+          shouldDelay.current = false;
+          const marker = ripple.current;
+          if (checkingCoupon || !marker || !event.detail || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          marker.style.left = `${event.clientX - rect.left}px`;
+          marker.style.top = `${event.clientY - rect.top}px`;
+          marker.animate([
+            { transform: "translate(-50%, -50%) scale(.1)", opacity: .5 },
+            { transform: "translate(-50%, -50%) scale(10)", opacity: 0 },
+          ], { duration: 420, easing: "ease-out" });
+          shouldDelay.current = true;
+        }}
+        onNavigate={(event) => {
+          if (checkingCoupon) {
+            event.preventDefault();
+            return;
+          }
+          if (!shouldDelay.current) return;
+          event.preventDefault();
+          if (timer.current != null) return;
+          timer.current = window.setTimeout(() => router.push("/checkout"), 110);
+        }}
+      >
+        Proceed to pay <ChevronRight aria-hidden="true" className="size-5 shrink-0" />
+        <span ref={ripple} aria-hidden="true" className="pointer-events-none absolute size-8 rounded-full bg-[var(--white)] opacity-0" />
+      </Link>
     </div>
   );
 }

@@ -25,7 +25,7 @@ export const POST = withAuth(["rider", "admin"], async (req, { user, params }) =
   if (step === "picked-up" && order.pickup_code && code !== order.pickup_code) {
     return fail("Invalid store pickup code");
   }
-  if (step === "deliver" && order.delivery_otp && code !== order.delivery_otp) {
+  if (step === "deliver" && (!order.delivery_otp || code !== order.delivery_otp)) {
     return fail("Invalid customer delivery OTP");
   }
 
@@ -74,6 +74,7 @@ export const POST = withAuth(["rider", "admin"], async (req, { user, params }) =
     await db.from("rider_profiles").update(updates).eq("user_id", user.id);
   }
 
+  if (updated) delete updated.delivery_otp;
   return ok(updated);
 });
 

@@ -1,4 +1,5 @@
 "use client";
+import { LayoutSkeleton } from "@/components/ui/LayoutSkeleton";
 import React, { useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -36,7 +37,7 @@ export default function StoreDashboardPage() {
     },
   });
 
-  if (loading) return <div className="p-8 text-center text-sm text-gray-500">Loading Store App...</div>;
+  if (loading) return <LayoutSkeleton shape="table" label="Loading store orders" />;
   if (!user || !["store_manager", "admin", "super_admin"].includes(user.role)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 p-4">
@@ -85,24 +86,20 @@ export default function StoreDashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <header className="bg-white border-b px-5 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20">
-        <div className="flex items-center gap-3">
-          <img
-            src="/logo.png"
-            alt="TTM"
-            width={32}
-            height={32}
-            style={{ width: "32px", height: "32px" }}
-            className="w-8 h-8 rounded-lg object-contain shadow-2xs"
-          />
-          <span className="font-black text-sm tracking-tight text-[#13193b]">
+      <header className="bg-white border-b px-5 pt-[calc(.75rem+env(safe-area-inset-top,0px))] pb-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20">
+        <div className="store-heading flex max-w-full items-center gap-x-3 gap-y-2">
+          <span className="media-frame block shrink-0 size-8 rounded-lg shadow-2xs">
+            <img src="/logo.png" alt="TTM" width={32} height={32} className="media-content media-content--contain" />
+          </span>
+          <span className="layout-wrap font-black text-sm tracking-tight text-[#13193b]">
             TIKK TIKK MART <span className="text-[#f66002]">Dark Store Ops</span>
           </span>
           {stores.length > 0 && (
             <select
               value={storeId}
               onChange={(e) => setSelectedStoreId(e.target.value)}
-              className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold bg-gray-50 focus:border-[#f66002] focus:outline-none"
+              aria-label="Store location"
+              className="min-w-0 w-full sm:w-auto sm:max-w-64 border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold bg-gray-50 focus:border-[#f66002] focus:outline-none"
             >
               {stores.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -113,7 +110,7 @@ export default function StoreDashboardPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex max-w-full flex-wrap items-center gap-3">
           {activeStore && (
             <button
               type="button"
@@ -144,7 +141,7 @@ export default function StoreDashboardPage() {
           {columns.map((col) => {
             const colOrders = orders.filter((o) => col.statuses.includes(o.status));
             return (
-              <section key={col.title} className="bg-gray-50 rounded-2xl border p-3 space-y-3 min-h-[420px]">
+              <section key={col.title} className="layout-wrap bg-gray-50 rounded-2xl border p-3 space-y-3 min-h-[420px]">
                 <div className="flex items-center justify-between px-1">
                   <h2 className="font-extrabold text-sm text-gray-800">{col.title}</h2>
                   <span className="text-xs font-bold bg-white border px-2 py-0.5 rounded-full">{colOrders.length}</span>

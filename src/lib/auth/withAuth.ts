@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyIdToken } from "@/lib/firebase/admin";
+import { replayMutation } from "@/lib/api/replay";
 import { db } from "@/lib/supabase/server";
 import { AppUser, Role, superAdminEmails } from "./roles";
 
@@ -105,7 +106,8 @@ export function withAuth(roles: Role[] | null, handler: Handler) {
     if (roles && !roles.includes(resolved.role) && resolved.role !== "super_admin") {
       return fail("forbidden", 403);
     }
-    return handler(req, { user: resolved, params: await route.params });
+    const params = await route.params;
+    return replayMutation(req, resolved.id, () => handler(req, { user: resolved, params }));
   };
 }
 

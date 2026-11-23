@@ -36,7 +36,7 @@ export default function AdminPayoutsPage() {
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border overflow-x-auto">
+      <div className="layout-table bg-white rounded-2xl border">
         <table className="w-full text-xs text-left">
           <thead className="bg-gray-50 text-gray-500 uppercase border-b">
             <tr>
