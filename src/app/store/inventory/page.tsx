@@ -954,11 +954,14 @@ function TikkStockPortal() {
     <div className="flex h-screen overflow-hidden bg-[#FBF6EE] text-[13px] text-[#3A2418]">
       {/* Desktop Sidebar */}
       <aside className="hidden w-[192px] flex-none flex-col gap-1 border-r border-[#F0E4D2] bg-white px-3 py-3.5 sm:flex">
-        <div className="flex items-center gap-2.5 px-1.5 pb-3 text-sm font-bold">
-          <span className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-[#A8421A] text-white">
+        <div className="flex items-center gap-2.5 px-1.5 pb-3.5">
+          <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-[#A8421A] text-white shadow-xs">
             <Warehouse className="size-4" />
           </span>
-          <span>Tikk Stock</span>
+          <div className="min-w-0 leading-tight">
+            <span className="block text-sm font-bold tracking-tight">Tikk Stock</span>
+            <span className="block text-[10px] font-medium text-[#8A7060]">Dark Store Ops</span>
+          </div>
         </div>
 
         {navItems.map((nav) => {
@@ -1105,17 +1108,6 @@ function TikkStockPortal() {
               <span className="text-xs font-semibold">{user?.name ?? "Store Manager"}</span>
             </div>
           </div>
-
-          {tab === "inv" && (
-            <button
-              type="button"
-              onClick={() => openModal(null)}
-              className="inline-flex items-center gap-1.5 rounded-[11px] bg-[#A8421A] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#8E3513]"
-            >
-              <Plus className="size-3.5" />
-              Add product
-            </button>
-          )}
         </header>
 
         {/* Mobile Scrollable Tab Navigation */}
@@ -1186,7 +1178,41 @@ function TikkStockPortal() {
             )}
           </div>
           {tab === "dash" && (
-            <div className="space-y-3">
+            <div className="space-y-3.5">
+              {/* Executive Store Pulse Strip */}
+              <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#F0E4D2] bg-gradient-to-r from-[#FFF7EC] via-white to-[#FBE3CF]/40 p-3.5 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                      acceptingOrders ? "bg-[#E3F0DA] text-[#2E7D4F]" : "bg-[#FBE1DD] text-[#C0392B]"
+                    }`}
+                  >
+                    <span className={`size-1.5 rounded-full ${acceptingOrders ? "bg-[#2E7D4F]" : "bg-[#C0392B]"}`} />
+                    {acceptingOrders ? "Store Open" : "Store Paused"}
+                  </span>
+                  <span className="text-xs font-semibold text-[#3A2418]">
+                    {activeStore?.name ?? "Park Street, Kolkata"}
+                  </span>
+                  <span className="text-xs text-[#8A7060]">· Prep ETA {prepTimeMin}m · {pendingOrdersCount} active orders</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTab("orders")}
+                    className="rounded-full bg-[#A8421A] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#8E3513]"
+                  >
+                    Open Orders Queue
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTab("wh")}
+                    className="rounded-full border border-[#EADBC6] bg-white px-3 py-1.5 text-xs font-semibold text-[#3A2418] hover:bg-[#FFF8EE]"
+                  >
+                    Rack Map
+                  </button>
+                </div>
+              </section>
+
               {/* KPIs */}
               <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
                 <button
@@ -1676,10 +1702,10 @@ function TikkStockPortal() {
                                     setSelectedBin({ sectionId: sec.id, code: bin.code });
                                   }}
                                   style={bin.skuId ? { backgroundColor: sec.tint } : undefined}
-                                  className={`relative flex h-10 items-center justify-center rounded-xl border text-xs font-semibold transition-all ${
+                                  className={`relative flex h-10 items-center justify-center rounded-xl border text-xs font-semibold transition-all hover:-translate-y-0.5 ${
                                     bin.skuId
-                                      ? "border-transparent text-[#3A2418] hover:brightness-95"
-                                      : "border-dashed border-[#E2D2BC] bg-[#F6EFE4]/70 text-[#A89282] hover:border-[#A8421A]"
+                                      ? "border-transparent text-[#3A2418] shadow-[0_1px_2px_rgba(58,36,24,0.06)] hover:brightness-95"
+                                      : "border-dashed border-[#E2D2BC] bg-[repeating-linear-gradient(135deg,#FAF4EA,#FAF4EA_4px,#F1E6D6_4px,#F1E6D6_8px)] text-[#A89282] hover:border-[#A8421A]"
                                   } ${isBinSelected ? "ring-2 ring-[#A8421A]" : ""} ${dimmed ? "opacity-30" : ""}`}
                                 >
                                   {bin.code}
