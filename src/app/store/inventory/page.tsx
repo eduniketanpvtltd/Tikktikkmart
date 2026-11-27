@@ -373,6 +373,7 @@ function TikkStockPortal() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [pinInputs, setPinInputs] = useState<Record<string, string>>({});
   const [selectedInvIds, setSelectedInvIds] = useState<Record<string, boolean>>({});
+  const [supplierFilter, setSupplierFilter] = useState<string>("All");
 
   const rackBySkuId = useMemo(() => {
     const map: Record<string, string> = {};
@@ -2494,141 +2495,254 @@ function TikkStockPortal() {
             );
           })()}
 
-          {tab === "rs" && (
-            <div className="space-y-3">
-              <section className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5">
-                <div className="mb-2.5 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold">Suggested restock</h2>
-                  <span className="text-xs text-[#8A7060]">{lowItems.length} items below reorder level</span>
-                </div>
-                {lowItems.length === 0 ? (
-                  <p className="py-3 text-xs text-[#8A7060]">Nothing needs restocking right now</p>
-                ) : (
-                  <>
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[520px] border-collapse">
-                        <thead>
-                          <tr className="bg-[#FBF6EE] text-left text-[11px] font-semibold text-[#8A7060]">
-                            <th className="w-8 px-2 py-2" />
-                            <th className="px-2 py-2">Product</th>
-                            <th className="px-2 py-2">Stock</th>
-                            <th className="px-2 py-2">Order qty</th>
-                            <th className="px-2 py-2">Supplier</th>
-                            <th className="px-2 py-2">Est. cost</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {lowItems.map((p) => {
-                            const checked = selectedRestock[p.id] ?? true;
-                            const q = restockQty[p.id] ?? Math.max(1, p.re * 3 - p.stock);
-                            return (
-                              <tr key={p.id} className="border-t border-[#F5EBDB]">
-                                <td className="px-2 py-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={(e) => setSelectedRestock((prev) => ({ ...prev, [p.id]: e.target.checked }))}
-                                    className="accent-[#A8421A]"
-                                  />
-                                </td>
-                                <td className="px-2 py-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="grid size-[30px] shrink-0 place-items-center rounded-[9px]" style={{ background: p.tint }}>
-                                      <Package className="size-4 text-[#3A2418]/60" />
-                                    </span>
-                                    <div>
-                                      <p className="font-semibold">{p.name}</p>
-                                      <p className="text-[11px] text-[#8A7060]">Reorder at {p.re}</p>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td className="px-2 py-2">
-                                  <span className="mr-1.5 font-semibold tabular-nums">{p.stock}</span>
-                                  <StatusPill status={getStatus(p)} />
-                                </td>
-                                <td className="px-2 py-2">
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    value={q}
-                                    onChange={(e) =>
-                                      setRestockQty((prev) => ({ ...prev, [p.id]: Math.max(1, Number(e.target.value) || 1) }))
-                                    }
-                                    className="w-16 rounded-[10px] border-[1.5px] border-[#EADBC6] bg-[#FBF6EE] px-2 py-1 text-center text-xs font-semibold"
-                                  />
-                                </td>
-                                <td className="px-2 py-2 text-xs">{SUPPLIERS[p.cat] ?? "Metro Wholesale"}</td>
-                                <td className="px-2 py-2 tabular-nums">{formatInr(q * p.price * 0.8)}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-xs text-[#8A7060]">
-                        <strong className="font-semibold text-[#3A2418]">{selectedRestockList.length}</strong> selected · est.{" "}
-                        <strong className="font-semibold text-[#3A2418]">{formatInr(selectedRestockCost)}</strong>
-                      </span>
-                      <button
-                        type="button"
-                        disabled={!selectedRestockList.length}
-                        onClick={createPO}
-                        className="inline-flex items-center gap-1.5 rounded-[11px] bg-[#A8421A] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#8E3513] disabled:opacity-40"
-                      >
-                        <Send className="size-3.5" />
-                        Create purchase order
-                      </button>
-                    </div>
-                  </>
-                )}
-              </section>
+          {tab === "rs" && (() => {
+            const outCountRs = lowItems.filter((p) => p.stock <= 0).length;
+            const suppliers = ["All", ...Array.from(new Set(lowItems.map((p) => SUPPLIERS[p.cat] ?? "Metro Wholesale")))];
+            const visibleRestock = supplierFilter === "All"
+              ? lowItems
+              : lowItems.filter((p) => (SUPPLIERS[p.cat] ?? "Metro Wholesale") === supplierFilter);
+            const allChecked = visibleRestock.length > 0 && visibleRestock.every((p) => selectedRestock[p.id] ?? true);
 
-              <section className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5">
-                <h2 className="mb-2 text-sm font-semibold">Purchase orders</h2>
-                {orders.length === 0 ? (
-                  <p className="text-xs text-[#8A7060]">No purchase orders yet</p>
-                ) : (
-                  <div className="divide-y divide-[#F5EBDB]">
-                    {orders.map((o) => (
-                      <div key={o.id} className="flex flex-wrap items-center gap-2.5 py-2.5">
-                        <span className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-[#FBE3CF] text-[#A8421A]">
-                          <FileText className="size-4" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold">
-                            {o.id}{" "}
-                            <span className="text-xs font-normal text-[#8A7060]">
-                              · {o.items.length} items · {formatInr(o.total)}
-                            </span>
-                          </p>
-                          <p className="truncate text-[11px] text-[#8A7060]">
-                            {o.items.map((x) => `${x.name} ×${x.qty}`).join(", ")}
-                          </p>
-                        </div>
-                        {o.done ? (
-                          <span className="rounded-[10px] bg-[#E3F0DA] px-2 py-0.5 text-[11px] font-semibold text-[#2E7D4F]">Received</span>
-                        ) : (
-                          <>
-                            <span className="rounded-[10px] bg-[#FFF0D0] px-2 py-0.5 text-[11px] font-semibold text-[#B7791F]">
-                              Arriving in {o.eta}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => receivePO(o.id)}
-                              className="rounded-[10px] bg-[#A8421A] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#8E3513]"
-                            >
-                              Mark received
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    ))}
+            return (
+              <div className="space-y-3.5">
+                {/* 3 Restock Summary KPI Cards */}
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                    <div className="flex items-center justify-between text-xs text-[#8A7060]">
+                      <span>Below Reorder</span>
+                      <AlertTriangle className="size-4 text-[#B7791F]" />
+                    </div>
+                    <b className="mt-1.5 block text-2xl font-bold tabular-nums">{lowItems.length}</b>
+                    <span className="text-[11px] text-[#C0392B] font-medium">{outCountRs} out of stock</span>
                   </div>
-                )}
-              </section>
-            </div>
-          )}
+
+                  <div className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                    <div className="flex items-center justify-between text-xs text-[#8A7060]">
+                      <span>Selected PO Cost</span>
+                      <IndianRupee className="size-4 text-[#A8421A]" />
+                    </div>
+                    <b className="mt-1.5 block text-2xl font-bold tabular-nums text-[#A8421A]">
+                      {formatInr(selectedRestockCost)}
+                    </b>
+                    <span className="text-[11px] text-[#8A7060]">{selectedRestockList.length} SKUs queued</span>
+                  </div>
+
+                  <div className="col-span-2 rounded-2xl border border-[#F0E4D2] bg-white p-3.5 shadow-[0_1px_2px_rgba(58,36,24,0.04)] sm:col-span-1">
+                    <div className="flex items-center justify-between text-xs text-[#8A7060]">
+                      <span>Purchase Orders</span>
+                      <FileText className="size-4 text-[#2E7D4F]" />
+                    </div>
+                    <b className="mt-1.5 block text-2xl font-bold tabular-nums">{orders.length}</b>
+                    <span className="text-[11px] text-[#8A7060]">
+                      {orders.filter((o) => !o.done).length} in transit · {orders.filter((o) => o.done).length} received
+                    </span>
+                  </div>
+                </div>
+
+                {/* Suggested Restock Table */}
+                <section className="rounded-2xl border border-[#F0E4D2] bg-white p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h2 className="text-sm font-bold text-[#3A2418]">Suggested restock</h2>
+                      <p className="text-[11px] text-[#8A7060]">{visibleRestock.length} items below reorder threshold</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {suppliers.map((sup) => (
+                        <button
+                          key={sup}
+                          type="button"
+                          onClick={() => setSupplierFilter(sup)}
+                          className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${
+                            supplierFilter === sup
+                              ? "border-[#A8421A] bg-[#A8421A] text-white"
+                              : "border-[#EADBC6] bg-[#FCF9F4] text-[#3A2418] hover:bg-[#FBE3CF]/50"
+                          }`}
+                        >
+                          {sup}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {visibleRestock.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-[#EADBC6] bg-[#FCF9F4] py-8 text-center text-xs text-[#8A7060]">
+                      Nothing needs restocking for this filter right now.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="overflow-x-auto rounded-xl border border-[#F5EBDB]">
+                        <table className="w-full min-w-[600px] border-collapse">
+                          <thead>
+                            <tr className="bg-[#FBF6EE] text-left text-[11px] font-semibold text-[#8A7060]">
+                              <th className="w-9 px-3 py-2.5">
+                                <input
+                                  type="checkbox"
+                                  aria-label="Select all restock items"
+                                  checked={allChecked}
+                                  onChange={(e) => {
+                                    const next = { ...selectedRestock };
+                                    visibleRestock.forEach((p) => { next[p.id] = e.target.checked; });
+                                    setSelectedRestock(next);
+                                  }}
+                                  className="size-3.5 accent-[#A8421A]"
+                                />
+                              </th>
+                              <th className="px-3 py-2.5">Product</th>
+                              <th className="px-3 py-2.5">Current Stock</th>
+                              <th className="px-3 py-2.5">Order Qty</th>
+                              <th className="px-3 py-2.5">Supplier</th>
+                              <th className="px-3 py-2.5 text-right">Est. Cost</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {visibleRestock.map((p) => {
+                              const checked = selectedRestock[p.id] ?? true;
+                              const q = restockQty[p.id] ?? Math.max(1, p.re * 3 - p.stock);
+                              const sup = SUPPLIERS[p.cat] ?? "Metro Wholesale";
+                              return (
+                                <tr key={p.id} className="border-t border-[#F5EBDB] hover:bg-[#FFFBF5]">
+                                  <td className="px-3 py-2.5">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={(e) => setSelectedRestock((prev) => ({ ...prev, [p.id]: e.target.checked }))}
+                                      className="size-3.5 accent-[#A8421A]"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <div className="flex items-center gap-2.5">
+                                      <span className="grid size-8 shrink-0 place-items-center rounded-xl" style={{ background: p.tint }}>
+                                        <Package className="size-4 text-[#3A2418]/70" />
+                                      </span>
+                                      <div>
+                                        <p className="font-semibold text-[#3A2418]">{p.name}</p>
+                                        <p className="text-[11px] text-[#8A7060]">{p.sku} · Reorder at {p.re}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <span className="mr-2 font-bold tabular-nums">{p.stock}</span>
+                                    <StatusPill status={getStatus(p)} />
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <div className="inline-flex items-center overflow-hidden rounded-xl border border-[#EADBC6] bg-[#FBF6EE]">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setRestockQty((prev) => ({ ...prev, [p.id]: Math.max(1, q - 5) }))
+                                        }
+                                        className="px-2 py-1 text-xs font-bold text-[#A8421A] hover:bg-[#FBE3CF]"
+                                      >
+                                        −5
+                                      </button>
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        value={q}
+                                        onChange={(e) =>
+                                          setRestockQty((prev) => ({ ...prev, [p.id]: Math.max(1, Number(e.target.value) || 1) }))
+                                        }
+                                        className="w-12 bg-white py-1 text-center text-xs font-bold tabular-nums focus:outline-none"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setRestockQty((prev) => ({ ...prev, [p.id]: q + 5 }))
+                                        }
+                                        className="px-2 py-1 text-xs font-bold text-[#A8421A] hover:bg-[#FBE3CF]"
+                                      >
+                                        +5
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <span className="rounded-full border border-[#EADBC6] bg-[#FCF9F4] px-2.5 py-0.5 text-[11px] font-medium text-[#3A2418]">
+                                      {sup}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
+                                    {formatInr(q * p.price * 0.8)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#F5DDB8] bg-[#FFF8EE] px-3.5 py-2.5">
+                        <span className="text-xs text-[#8A7060]">
+                          <strong className="font-bold text-[#3A2418]">{selectedRestockList.length}</strong> items selected · estimated PO total{" "}
+                          <strong className="font-bold text-[#A8421A]">{formatInr(selectedRestockCost)}</strong>
+                        </span>
+                        <button
+                          type="button"
+                          disabled={!selectedRestockList.length}
+                          onClick={createPO}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-[#A8421A] px-4 py-2 text-xs font-semibold text-white hover:bg-[#8E3513] disabled:opacity-40"
+                        >
+                          <Send className="size-3.5" />
+                          Create purchase order
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </section>
+
+                {/* Purchase Orders */}
+                <section className="rounded-2xl border border-[#F0E4D2] bg-white p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                  <div className="mb-2.5 flex items-center justify-between">
+                    <h2 className="text-sm font-bold text-[#3A2418]">Purchase orders</h2>
+                    <span className="text-xs text-[#8A7060]">{orders.length} total</span>
+                  </div>
+                  {orders.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#EADBC6] bg-[#FCF9F4] py-7 text-center">
+                      <Package className="mb-1.5 size-6 text-[#C9B8A4]" />
+                      <p className="text-xs font-medium text-[#8A7060]">No purchase orders created yet</p>
+                      <p className="mt-0.5 text-[11px] text-[#A89282]">Select items above and click Create purchase order.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-[#F5EBDB]">
+                      {orders.map((o) => (
+                        <div key={o.id} className="flex flex-wrap items-center gap-2.5 py-2.5">
+                          <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-[#FBE3CF] text-[#A8421A]">
+                            <FileText className="size-4" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold">
+                              {o.id}{" "}
+                              <span className="text-xs font-normal text-[#8A7060]">
+                                · {o.items.length} items · {formatInr(o.total)}
+                              </span>
+                            </p>
+                            <p className="truncate text-[11px] text-[#8A7060]">
+                              {o.items.map((x) => `${x.name} ×${x.qty}`).join(", ")}
+                            </p>
+                          </div>
+                          {o.done ? (
+                            <span className="rounded-full bg-[#E3F0DA] px-2.5 py-1 text-[11px] font-semibold text-[#2E7D4F]">Received</span>
+                          ) : (
+                            <>
+                              <span className="rounded-full bg-[#FFF0D0] px-2.5 py-1 text-[11px] font-semibold text-[#B7791F]">
+                                Arriving in {o.eta}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => receivePO(o.id)}
+                                className="rounded-full bg-[#A8421A] px-3 py-1 text-xs font-semibold text-white hover:bg-[#8E3513]"
+                              >
+                                Mark received
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+            );
+          })()}
 
           {tab === "log" && (
             <section className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5">
