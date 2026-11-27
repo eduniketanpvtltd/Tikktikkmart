@@ -1145,7 +1145,7 @@ function TikkStockPortal() {
 
         <div className="space-y-3 p-3 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-[#3A2418]">
+            <h1 className="text-2xl font-bold tracking-tight text-[#3A2418] sm:text-[26px]">
               {pageTitles[tab]}
               {tab === "wh" && <span className="ml-1.5 font-semibold text-[#8A7060]">({zones.length})</span>}
             </h1>
