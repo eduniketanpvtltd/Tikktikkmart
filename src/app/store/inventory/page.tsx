@@ -40,7 +40,7 @@ import {
 import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/components/providers/AppProviders";
 
-type PortalTab = "dash" | "wh" | "orders" | "inv" | "rs" | "ship" | "rep" | "log";
+type PortalTab = "dash" | "wh" | "orders" | "inv" | "rs" | "ship" | "rep" | "prof" | "log";
 type StockStatus = "in" | "lo" | "ou";
 type StatusFilter = "all" | StockStatus;
 type SortKey = "name" | "stock" | "price" | "value" | "exp";
@@ -376,6 +376,16 @@ function TikkStockPortal() {
   const [supplierFilter, setSupplierFilter] = useState<string>("All");
   const [shipFilter, setShipFilter] = useState<"all" | "ready" | "instore" | "handed">("all");
   const [previewReport, setPreviewReport] = useState<string | null>(null);
+  const [managerName, setManagerName] = useState<string>("");
+  const [storePhone, setStorePhone] = useState<string>("+91 98300 41209");
+  const [deliveryRadius, setDeliveryRadius] = useState<string>("3.5 km");
+  const [shiftActive, setShiftActive] = useState<boolean>(true);
+  const [alertPrefs, setAlertPrefs] = useState({
+    lowStock: true,
+    expiry: true,
+    orderChime: true,
+    autoPoDraft: false,
+  });
 
   const rackBySkuId = useMemo(() => {
     const map: Record<string, string> = {};
@@ -831,6 +841,7 @@ function TikkStockPortal() {
     rs: "Restock",
     ship: "Shipments & Riders",
     rep: "Export Reports",
+    prof: "Store Profile",
     log: "Activity",
   };
 
@@ -950,6 +961,7 @@ function TikkStockPortal() {
     { id: "rs", label: "Restock", icon: Package, badge: lowItems.length },
     { id: "ship", label: "Shipments", icon: Truck },
     { id: "rep", label: "Export Reports", icon: FileSpreadsheet },
+    { id: "prof", label: "Profile", icon: UserCheck },
     { id: "log", label: "Activity", icon: History },
   ] as const;
 
@@ -1104,12 +1116,16 @@ function TikkStockPortal() {
               </button>
             </label>
 
-            <div className="hidden items-center gap-2 rounded-full border border-[#EADBC6] bg-white py-1 pr-3 pl-1.5 md:flex">
+            <button
+              type="button"
+              onClick={() => setTab("prof")}
+              className="hidden items-center gap-2 rounded-full border border-[#EADBC6] bg-white py-1 pr-3 pl-1.5 transition-colors hover:border-[#A8421A] md:flex"
+            >
               <span className="grid size-7 place-items-center rounded-full bg-[#FBE3CF] text-[11px] font-bold text-[#A8421A]">
-                {(user?.name ?? "SM").slice(0, 2).toUpperCase()}
+                {(managerName || user?.name || "SM").slice(0, 2).toUpperCase()}
               </span>
-              <span className="text-xs font-semibold">{user?.name ?? "Store Manager"}</span>
-            </div>
+              <span className="text-xs font-semibold">{managerName || user?.name || "Store Manager"}</span>
+            </button>
           </div>
         </header>
 
@@ -2997,6 +3013,178 @@ function TikkStockPortal() {
               </div>
             );
           })()}
+
+          {tab === "prof" && (
+            <div className="space-y-3.5">
+              {/* Profile Hero Card */}
+              <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#F0E4D2] bg-gradient-to-r from-[#FFF7EC] via-white to-[#FBE3CF]/40 p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                <div className="flex items-center gap-3.5">
+                  <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-[#A8421A] text-lg font-bold text-white shadow-xs">
+                    {(managerName || user?.name || "SM").slice(0, 2).toUpperCase()}
+                  </span>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong className="text-base font-bold text-[#3A2418]">
+                        {managerName || user?.name || "Akash Chaudhary"}
+                      </strong>
+                      <span className="rounded-full bg-[#FBE3CF] px-2.5 py-0.5 text-[11px] font-bold text-[#A8421A]">
+                        {user?.role ?? "store_manager"}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-[#8A7060]">
+                      {activeStore?.name ?? "Park Street, Kolkata"} · Dark Store #12 · {user?.email ?? "manager@tikktikkmart.com"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShiftActive((v) => !v);
+                      showToast(!shiftActive ? "Shift marked active" : "Shift ended");
+                    }}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                      shiftActive ? "bg-[#E3F0DA] text-[#2E7D4F]" : "border border-[#EADBC6] bg-white text-[#8A7060]"
+                    }`}
+                  >
+                    <span className={`size-2 rounded-full ${shiftActive ? "bg-[#2E7D4F]" : "bg-[#C9B8A4]"}`} />
+                    {shiftActive ? "On Shift · 07:00–15:00" : "Off Shift"}
+                  </button>
+                  <Link
+                    href="/login?next=/store/inventory"
+                    className="rounded-full border border-[#EADBC6] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#3A2418] hover:bg-[#FFF8EE]"
+                  >
+                    Switch Account
+                  </Link>
+                </div>
+              </section>
+
+              <div className="grid gap-3.5 lg:grid-cols-2">
+                {/* Store & Manager Details */}
+                <section className="rounded-2xl border border-[#F0E4D2] bg-white p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                  <h2 className="mb-3 text-sm font-bold text-[#3A2418]">Manager &amp; Dark Store Details</h2>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold text-[#8A7060]">Manager Display Name</label>
+                      <input
+                        value={managerName || user?.name || "Akash Chaudhary"}
+                        onChange={(e) => setManagerName(e.target.value)}
+                        className="h-9 w-full rounded-xl border border-[#EADBC6] bg-[#FBF6EE] px-3 text-xs font-medium text-[#3A2418] focus:border-[#A8421A] focus:outline-none"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="mb-1 block text-[11px] font-semibold text-[#8A7060]">Store Desk Phone</label>
+                        <input
+                          value={storePhone}
+                          onChange={(e) => setStorePhone(e.target.value)}
+                          className="h-9 w-full rounded-xl border border-[#EADBC6] bg-[#FBF6EE] px-3 text-xs font-medium text-[#3A2418] focus:border-[#A8421A] focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-semibold text-[#8A7060]">Delivery Radius</label>
+                        <input
+                          value={deliveryRadius}
+                          onChange={(e) => setDeliveryRadius(e.target.value)}
+                          className="h-9 w-full rounded-xl border border-[#EADBC6] bg-[#FBF6EE] px-3 text-xs font-medium text-[#3A2418] focus:border-[#A8421A] focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#F5EBDB] bg-[#FCF9F4] p-3">
+                      <div>
+                        <p className="text-xs font-semibold text-[#3A2418]">Accepting Customer Orders</p>
+                        <p className="text-[11px] text-[#8A7060]">Prep ETA: {prepTimeMin} min</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void toggleAcceptingOrders()}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold text-white ${
+                          acceptingOrders ? "bg-[#2E7D4F]" : "bg-[#C0392B]"
+                        }`}
+                      >
+                        {acceptingOrders ? "Store Open" : "Store Paused"}
+                      </button>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          pushLog("edit", "Updated store profile settings", 0);
+                          showToast("Profile & store details saved");
+                        }}
+                        className="rounded-full bg-[#A8421A] px-4 py-2 text-xs font-semibold text-white hover:bg-[#8E3513]"
+                      >
+                        Save Changes
+                      </button>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Alert Preferences & Shift Stats */}
+                <div className="flex flex-col gap-3.5">
+                  <section className="rounded-2xl border border-[#F0E4D2] bg-white p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                    <h2 className="mb-3 text-sm font-bold text-[#3A2418]">Alert &amp; Automation Preferences</h2>
+                    <div className="divide-y divide-[#F5EBDB]">
+                      {(
+                        [
+                          ["lowStock", "Low stock threshold alerts", "Notify when SKU drops below reorder point"],
+                          ["expiry", "FEFO expiry warnings (≤3d)", "Highlight perishable items for clearance"],
+                          ["orderChime", "New order audio chime", "Alert pickers when an app order arrives"],
+                          ["autoPoDraft", "Auto-draft supplier POs", "Prepare restock draft every evening"],
+                        ] as const
+                      ).map(([key, title, sub]) => {
+                        const enabled = alertPrefs[key];
+                        return (
+                          <div key={key} className="flex items-center justify-between gap-3 py-2.5">
+                            <div>
+                              <p className="text-xs font-semibold text-[#3A2418]">{title}</p>
+                              <p className="text-[11px] text-[#8A7060]">{sub}</p>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={enabled}
+                              onClick={() => {
+                                setAlertPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
+                                showToast(`${title} ${!enabled ? "enabled" : "disabled"}`);
+                              }}
+                              className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+                                enabled ? "bg-[#2E7D4F]" : "bg-[#E5D6C2]"
+                              }`}
+                            >
+                              <span
+                                className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform ${
+                                  enabled ? "translate-x-4" : ""
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  <section className="grid grid-cols-3 gap-2.5 rounded-2xl border border-[#F0E4D2] bg-white p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                    <div className="rounded-xl bg-[#FCF9F4] p-2.5 text-center">
+                      <b className="block text-lg font-bold tabular-nums text-[#3A2418]">{storeOrders.length}</b>
+                      <span className="text-[11px] text-[#8A7060]">Orders Today</span>
+                    </div>
+                    <div className="rounded-xl bg-[#FCF9F4] p-2.5 text-center">
+                      <b className="block text-lg font-bold tabular-nums text-[#A8421A]">{events.length}</b>
+                      <span className="text-[11px] text-[#8A7060]">Activity Logs</span>
+                    </div>
+                    <div className="rounded-xl bg-[#FCF9F4] p-2.5 text-center">
+                      <b className="block text-lg font-bold tabular-nums text-[#2E7D4F]">{items.length}</b>
+                      <span className="text-[11px] text-[#8A7060]">Managed SKUs</span>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+          )}
 
           {tab === "log" && (
             <section className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5">
