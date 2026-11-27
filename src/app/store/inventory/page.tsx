@@ -1296,33 +1296,51 @@ function TikkStockPortal() {
 
               {/* Charts Row */}
               <div className="grid gap-3 md:grid-cols-2">
-                <section className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5">
-                  <h2 className="mb-3 text-sm font-semibold">Stock health</h2>
-                  <div className="flex items-center gap-4">
-                    <div
-                      className="grid size-24 shrink-0 place-items-center rounded-full"
-                      style={{
-                        background: `conic-gradient(#2E7D4F 0 ${metrics.inPct}%, #E8A317 ${metrics.inPct}% ${metrics.loPct}%, #D9453D ${metrics.loPct}% 100%)`,
-                      }}
-                    >
-                      <div className="flex size-[62px] flex-col items-center justify-center rounded-full bg-white">
-                        <strong className="text-lg font-semibold leading-none">{Math.round(metrics.inPct)}%</strong>
-                        <span className="mt-0.5 text-[11px] text-[#8A7060]">healthy</span>
+                <section className="flex flex-col justify-between rounded-2xl border border-[#F0E4D2] bg-white p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                  <div>
+                    <div className="mb-3 flex items-center justify-between">
+                      <h2 className="text-sm font-bold text-[#3A2418]">Stock health</h2>
+                      <span className="rounded-full bg-[#FBF6EE] px-2.5 py-0.5 text-[11px] font-semibold text-[#8A7060]">
+                        {items.length} SKUs
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-5">
+                      <div
+                        className="grid size-24 shrink-0 place-items-center rounded-full"
+                        style={{
+                          background: `conic-gradient(#2E7D4F 0 ${metrics.inPct}%, #E8A317 ${metrics.inPct}% ${metrics.loPct}%, #D9453D ${metrics.loPct}% 100%)`,
+                        }}
+                      >
+                        <div className="flex size-[62px] flex-col items-center justify-center rounded-full bg-white">
+                          <strong className="text-lg font-semibold leading-none">{Math.round(metrics.inPct)}%</strong>
+                          <span className="mt-0.5 text-[11px] text-[#8A7060]">healthy</span>
+                        </div>
+                      </div>
+                      <div className="grid flex-1 grid-cols-1 gap-1.5 text-xs">
+                        <div className="flex items-center justify-between rounded-xl bg-[#FCF9F4] px-2.5 py-1.5">
+                          <span className="text-[#8A7060]">In stock</span>
+                          <span className="rounded-md bg-[#E3F0DA] px-2 py-0.5 font-bold text-[#2E7D4F]">{metrics.inCount}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-xl bg-[#FCF9F4] px-2.5 py-1.5">
+                          <span className="text-[#8A7060]">Low stock</span>
+                          <span className="rounded-md bg-[#FFF0D0] px-2 py-0.5 font-bold text-[#B7791F]">{metrics.lowCount}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-xl bg-[#FCF9F4] px-2.5 py-1.5">
+                          <span className="text-[#8A7060]">Out of stock</span>
+                          <span className="rounded-md bg-[#FBE1DD] px-2 py-0.5 font-bold text-[#C0392B]">{metrics.outCount}</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="space-y-1.5 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-lg bg-[#E3F0DA] px-2 py-0.5 font-semibold text-[#2E7D4F]">{metrics.inCount}</span>
-                        <span>In stock</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-lg bg-[#FFF0D0] px-2 py-0.5 font-semibold text-[#B7791F]">{metrics.lowCount}</span>
-                        <span>Low</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-lg bg-[#FBE1DD] px-2 py-0.5 font-semibold text-[#C0392B]">{metrics.outCount}</span>
-                        <span>Out</span>
-                      </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[#F5EBDB] pt-3 text-xs">
+                    <div className="rounded-xl bg-[#FCF9F4] px-3 py-2">
+                      <span className="block text-[11px] text-[#8A7060]">Fulfillment SLA</span>
+                      <strong className="text-sm font-bold text-[#2E7D4F]">98.4%</strong>
+                    </div>
+                    <div className="rounded-xl bg-[#FCF9F4] px-3 py-2">
+                      <span className="block text-[11px] text-[#8A7060]">Avg Prep Time</span>
+                      <strong className="text-sm font-bold text-[#3A2418]">{prepTimeMin} min</strong>
                     </div>
                   </div>
                 </section>
@@ -1378,6 +1396,13 @@ function TikkStockPortal() {
                               </p>
                             </div>
                             <StatusPill status={s} />
+                            <button
+                              type="button"
+                              onClick={() => adjustStock(p.id, 10)}
+                              className="rounded-full border border-[#EADBC6] bg-[#FBF6EE] px-2.5 py-1 text-[11px] font-semibold text-[#2E7D4F] hover:bg-[#E3F0DA]"
+                            >
+                              +10
+                            </button>
                           </div>
                         );
                       })}
@@ -1412,9 +1437,13 @@ function TikkStockPortal() {
                                 pushLog("clearance", `Clearance started: ${p.name}`, 0);
                                 showToast(`Clearance offer started for ${p.name}`);
                               }}
-                              className="rounded-[10px] border border-[#EADBC6] bg-white px-2.5 py-1 text-xs font-medium text-[#8A7060] hover:bg-[#FBF6EE] disabled:opacity-45"
+                              className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
+                                started
+                                  ? "bg-[#E3F0DA] text-[#2E7D4F]"
+                                  : "border border-[#EADBC6] bg-white text-[#3A2418] hover:bg-[#FBE3CF]"
+                              }`}
                             >
-                              {started ? "Started" : "Clearance"}
+                              {started ? "−20% Applied" : "Clearance"}
                             </button>
                           </div>
                         );
@@ -1425,10 +1454,15 @@ function TikkStockPortal() {
               </div>
 
               {/* 7-Day Fulfillment & Stockout Trend */}
-              <section className="rounded-2xl border border-[#F0E4D2] bg-white p-4">
+              <section className="rounded-2xl border border-[#F0E4D2] bg-white p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h2 className="text-sm font-bold text-[#3A2418]">7-Day Fulfillment &amp; Stockouts</h2>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-sm font-bold text-[#3A2418]">7-Day Fulfillment &amp; Stockouts</h2>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#E3F0DA] px-2.5 py-0.5 text-[11px] font-bold text-[#2E7D4F]">
+                        1,047 orders · +14% <TrendingUp className="size-3" />
+                      </span>
+                    </div>
                     <p className="text-[11px] text-[#8A7060]">Daily dark-store order throughput vs low-stock events</p>
                   </div>
                   <div className="flex items-center gap-3 text-[11px] text-[#8A7060]">
@@ -1440,7 +1474,7 @@ function TikkStockPortal() {
                     </span>
                   </div>
                 </div>
-                <div className="grid grid-cols-7 items-end gap-2 pt-2">
+                <div className="grid grid-cols-7 items-end gap-2 border-b border-dashed border-[#EADBC6] pb-2 pt-2">
                   {[
                     { day: "Mon", orders: 118, alerts: 4, rev: 34200 },
                     { day: "Tue", orders: 134, alerts: 3, rev: 38900 },
