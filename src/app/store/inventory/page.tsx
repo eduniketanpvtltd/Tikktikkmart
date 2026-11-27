@@ -939,29 +939,29 @@ function TikkStockPortal() {
 
   const totalAlerts = lowItems.length + metrics.expiring.length;
 
+  const navItems = [
+    { id: "dash", label: "Dashboard", icon: LayoutDashboard },
+    { id: "wh", label: "Warehouses", icon: Warehouse },
+    { id: "orders", label: "Orders", icon: ClipboardList, badge: pendingOrdersCount },
+    { id: "inv", label: "Inventory", icon: Boxes },
+    { id: "rs", label: "Restock", icon: Package, badge: lowItems.length },
+    { id: "ship", label: "Shipments", icon: Truck },
+    { id: "rep", label: "Export Reports", icon: FileSpreadsheet },
+    { id: "log", label: "Activity", icon: History },
+  ] as const;
+
   return (
     <div className="flex h-screen overflow-hidden bg-[#FBF6EE] text-[13px] text-[#3A2418]">
-      {/* Sidebar */}
-      <aside className="flex w-14 flex-none flex-col gap-1 border-r border-[#F0E4D2] bg-white px-2 py-3.5 sm:w-[192px] sm:px-3">
+      {/* Desktop Sidebar */}
+      <aside className="hidden w-[192px] flex-none flex-col gap-1 border-r border-[#F0E4D2] bg-white px-3 py-3.5 sm:flex">
         <div className="flex items-center gap-2.5 px-1.5 pb-3 text-sm font-bold">
           <span className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-[#A8421A] text-white">
             <Warehouse className="size-4" />
           </span>
-          <span className="hidden sm:inline">Tikk Stock</span>
+          <span>Tikk Stock</span>
         </div>
 
-        {(
-          [
-            { id: "dash", label: "Dashboard", icon: LayoutDashboard },
-            { id: "wh", label: "Warehouses", icon: Warehouse },
-            { id: "orders", label: "Orders", icon: ClipboardList, badge: pendingOrdersCount },
-            { id: "inv", label: "Inventory", icon: Boxes },
-            { id: "rs", label: "Restock", icon: Package, badge: lowItems.length },
-            { id: "ship", label: "Shipments", icon: Truck },
-            { id: "rep", label: "Export Reports", icon: FileSpreadsheet },
-            { id: "log", label: "Activity", icon: History },
-          ] as const
-        ).map((nav) => {
+        {navItems.map((nav) => {
           const Icon = nav.icon;
           const active = tab === nav.id;
           return (
@@ -974,9 +974,9 @@ function TikkStockPortal() {
               }`}
             >
               <Icon className="size-[18px] shrink-0" />
-              <span className="hidden truncate sm:inline">{nav.label}</span>
+              <span className="truncate">{nav.label}</span>
               {"badge" in nav && nav.badge > 0 && (
-                <span className="absolute top-0.5 right-0.5 rounded-full bg-[#D9453D] px-1.5 text-[10px] font-semibold leading-4 text-white sm:static sm:ml-auto">
+                <span className="ml-auto rounded-full bg-[#D9453D] px-1.5 text-[10px] font-semibold leading-4 text-white">
                   {nav.badge}
                 </span>
               )}
@@ -984,7 +984,7 @@ function TikkStockPortal() {
           );
         })}
 
-        <div className="mt-auto hidden space-y-1 rounded-xl border border-[#F5DDB8] bg-[#FFF0DA] p-2.5 text-[11px] text-[#8A7060] sm:block">
+        <div className="mt-auto space-y-1 rounded-xl border border-[#F5DDB8] bg-[#FFF0DA] p-2.5 text-[11px] text-[#8A7060]">
           <span>Store</span>
           <strong className="block text-xs font-semibold text-[#3A2418]">
             {activeStore?.name ?? "Park Street, Kolkata"}
@@ -1001,9 +1001,13 @@ function TikkStockPortal() {
       </aside>
 
       {/* Main Content */}
-      <main className="min-w-0 flex-1 overflow-y-auto">
-        <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2.5 border-b border-[#F0E4D2] bg-[#FBF6EE]/95 px-4 py-2.5 backdrop-blur-sm">
-          <div className="flex h-9 min-w-[180px] flex-1 max-w-sm items-center gap-2 rounded-full border border-[#EADBC6] bg-white px-3 text-[#8A7060]">
+      <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-[#F0E4D2] bg-[#FBF6EE]/95 px-3 py-2.5 backdrop-blur-sm sm:gap-2.5 sm:px-4">
+          <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-[#A8421A] text-white sm:hidden">
+            <Warehouse className="size-4" />
+          </span>
+
+          <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full border border-[#EADBC6] bg-white px-3 text-[#8A7060] sm:max-w-sm">
             <Search className="size-4 shrink-0" />
             <input
               value={query}
@@ -1011,17 +1015,17 @@ function TikkStockPortal() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && tab !== "inv") setTab("inv");
               }}
-              placeholder="Find inventory, racks, orders or SKUs"
-              className="w-full bg-transparent text-xs text-[#3A2418] placeholder-[#A89282] focus:outline-none"
+              placeholder="Search SKUs, racks, orders..."
+              className="min-w-0 w-full bg-transparent text-xs text-[#3A2418] placeholder-[#A89282] focus:outline-none"
             />
             {query && (
-              <button type="button" onClick={() => setQuery("")} className="text-[#A89282] hover:text-[#3A2418]">
+              <button type="button" onClick={() => setQuery("")} className="shrink-0 text-[#A89282] hover:text-[#3A2418]">
                 <X className="size-3.5" />
               </button>
             )}
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:ml-auto sm:gap-2">
             <div className="relative">
               <button
                 type="button"
@@ -1114,7 +1118,40 @@ function TikkStockPortal() {
           )}
         </header>
 
-        <div className="space-y-3 p-4 sm:p-5">
+        {/* Mobile Scrollable Tab Navigation */}
+        <nav
+          aria-label="Mobile sections"
+          className="flex items-center gap-1.5 overflow-x-auto border-b border-[#F0E4D2] bg-white px-3 py-2 sm:hidden"
+        >
+          {navItems.map((nav) => {
+            const Icon = nav.icon;
+            const active = tab === nav.id;
+            return (
+              <button
+                key={nav.id}
+                type="button"
+                onClick={() => setTab(nav.id)}
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  active ? "bg-[#A8421A] font-semibold text-white" : "border border-[#EADBC6] bg-[#FCF9F4] text-[#8A7060]"
+                }`}
+              >
+                <Icon className="size-3.5 shrink-0" />
+                <span>{nav.label}</span>
+                {"badge" in nav && nav.badge > 0 && (
+                  <span
+                    className={`rounded-full px-1.5 text-[10px] font-bold leading-4 ${
+                      active ? "bg-white/20 text-white" : "bg-[#D9453D] text-white"
+                    }`}
+                  >
+                    {nav.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="space-y-3 p-3 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h1 className="text-xl font-bold tracking-tight text-[#3A2418]">
               {pageTitles[tab]}
