@@ -1196,6 +1196,15 @@ function TikkStockPortal() {
                   <span className="text-xs text-[#8A7060]">· Prep ETA {prepTimeMin}m · {pendingOrdersCount} active orders</span>
                 </div>
                 <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold ${
+                      liveRows && liveRows.length > 0
+                        ? "border-[#CDE6BD] bg-[#E3F0DA] text-[#2E7D4F]"
+                        : "border-[#EADBC6] bg-white text-[#8A7060]"
+                    }`}
+                  >
+                    {liveRows && liveRows.length > 0 ? "Live DB" : "Demo Data"}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setTab("orders")}
@@ -1411,6 +1420,58 @@ function TikkStockPortal() {
                   )}
                 </section>
               </div>
+
+              {/* 7-Day Fulfillment & Stockout Trend */}
+              <section className="rounded-2xl border border-[#F0E4D2] bg-white p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-sm font-bold text-[#3A2418]">7-Day Fulfillment &amp; Stockouts</h2>
+                    <p className="text-[11px] text-[#8A7060]">Daily dark-store order throughput vs low-stock events</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px] text-[#8A7060]">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="size-2.5 rounded-sm bg-[#A8421A]" /> Orders fulfilled
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="size-2.5 rounded-sm bg-[#F5DDB8]" /> Stockout alerts
+                    </span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-7 items-end gap-2 pt-2">
+                  {[
+                    { day: "Mon", orders: 118, alerts: 4, rev: 34200 },
+                    { day: "Tue", orders: 134, alerts: 3, rev: 38900 },
+                    { day: "Wed", orders: 126, alerts: 5, rev: 36100 },
+                    { day: "Thu", orders: 149, alerts: 2, rev: 43800 },
+                    { day: "Fri", orders: 162, alerts: 3, rev: 48400 },
+                    { day: "Sat", orders: 184, alerts: 6, rev: 54900 },
+                    { day: "Sun", orders: 171 + storeOrders.length, alerts: lowItems.length, rev: 51200 },
+                  ].map((d) => {
+                    const orderH = Math.max(18, Math.round((d.orders / 195) * 96));
+                    const alertH = Math.max(8, Math.min(48, d.alerts * 7));
+                    return (
+                      <div key={d.day} className="group flex flex-col items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-[#3A2418] tabular-nums opacity-75 group-hover:opacity-100">
+                          {d.orders}
+                        </span>
+                        <div className="flex h-24 w-full items-end justify-center gap-1">
+                          <div
+                            title={`${d.day}: ${d.orders} orders · ${formatInr(d.rev)}`}
+                            className="w-3.5 rounded-t-md bg-[#A8421A] transition-all group-hover:bg-[#8E3513] sm:w-5"
+                            style={{ height: `${orderH}px` }}
+                          />
+                          <div
+                            title={`${d.day}: ${d.alerts} stockout alerts`}
+                            className="w-2 rounded-t-md bg-[#F5DDB8] sm:w-2.5"
+                            style={{ height: `${alertH}px` }}
+                          />
+                        </div>
+                        <span className="text-[11px] font-medium text-[#8A7060]">{d.day}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
             </div>
           )}
 
