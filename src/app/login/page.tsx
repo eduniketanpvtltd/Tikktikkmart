@@ -35,7 +35,8 @@ export default function LoginPage() {
 
       if (json?.ok) {
         const next = new URLSearchParams(window.location.search).get("next");
-        window.location.href = next && /^\/orders\/[0-9a-f-]{36}$/i.test(next) ? next : "/";
+        const isSafeNext = Boolean(next && /^\/(orders\/[0-9a-f-]{36}|store(\/inventory)?|admin|account|rider)(\?.*)?$/i.test(next));
+        window.location.href = isSafeNext && next ? next : "/";
       } else {
         setError(json?.error || "Login verification failed. Please try again.");
         setLoading(false);

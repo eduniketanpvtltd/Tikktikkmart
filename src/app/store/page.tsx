@@ -40,12 +40,22 @@ export default function StoreDashboardPage() {
   if (loading) return <LayoutSkeleton shape="table" label="Loading store orders" />;
   if (!user || !["store_manager", "admin", "super_admin"].includes(user.role)) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-3 p-4">
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 p-4 text-center">
         <StoreIcon className="w-10 h-10 text-blue-600" />
         <p className="font-bold">Store Manager Access Required</p>
-        <Link href="/login" className="px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-bold">
-          Login
-        </Link>
+        {user && (
+          <p className="text-xs text-gray-500">
+            Signed in as {user.email ?? user.phone ?? "user"} (role: {user.role}).
+          </p>
+        )}
+        <div className="flex items-center gap-2">
+          <Link href="/login?next=/store" className="px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-bold">
+            {user ? "Switch Account" : "Login"}
+          </Link>
+          <Link href="/store/inventory" className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-gray-800 text-sm font-bold">
+            Open Tikk Stock
+          </Link>
+        </div>
       </div>
     );
   }
