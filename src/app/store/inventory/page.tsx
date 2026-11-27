@@ -375,6 +375,7 @@ function TikkStockPortal() {
   const [selectedInvIds, setSelectedInvIds] = useState<Record<string, boolean>>({});
   const [supplierFilter, setSupplierFilter] = useState<string>("All");
   const [shipFilter, setShipFilter] = useState<"all" | "ready" | "instore" | "handed">("all");
+  const [previewReport, setPreviewReport] = useState<string | null>(null);
 
   const rackBySkuId = useMemo(() => {
     const map: Record<string, string> = {};
@@ -2161,82 +2162,189 @@ function TikkStockPortal() {
             );
           })()}
 
-          {tab === "rep" && (
-            <div className="grid gap-3 md:grid-cols-2">
-              {[
-                {
-                  title: "Full Inventory Valuation Report",
-                  desc: "All SKUs, selling price, MRP, stock count, reorder level & stock value.",
-                  file: "tikk-stock-inventory.csv",
-                  run: () =>
-                    downloadCsv(
-                      "tikk-stock-inventory.csv",
-                      ["SKU", "Name", "Brand", "Category", "Stock", "Reorder", "Price", "MRP", "Valuation"],
-                      items.map((p) => [p.sku, p.name, p.brand, p.cat, p.stock, p.re, p.price, p.mrp, p.stock * p.price]),
-                      "Inventory Valuation CSV",
-                    ),
-                },
-                {
-                  title: "Low Stock & Reorder Queue",
-                  desc: "Items at or below reorder threshold with recommended purchase quantities.",
-                  file: "tikk-stock-reorder.csv",
-                  run: () =>
-                    downloadCsv(
-                      "tikk-stock-reorder.csv",
-                      ["SKU", "Name", "Category", "Current Stock", "Reorder At", "Suggested Qty"],
-                      lowItems.map((p) => [p.sku, p.name, p.cat, p.stock, p.re, Math.max(1, p.re * 3 - p.stock)]),
-                      "Low Stock Reorder CSV",
-                    ),
-                },
-                {
-                  title: "Expiring Batches (FEFO)",
-                  desc: "Perishable items expiring within 3 days for markdown or clearance.",
-                  file: "tikk-stock-expiring.csv",
-                  run: () =>
-                    downloadCsv(
-                      "tikk-stock-expiring.csv",
-                      ["SKU", "Name", "Category", "Stock", "Expires In (Days)"],
-                      metrics.expiring.map((p) => [p.sku, p.name, p.cat, p.stock, p.exp ?? 0]),
-                      "Expiring FEFO CSV",
-                    ),
-                },
-                {
-                  title: "Orders & COD Settlement",
-                  desc: "Active and dispatched dark-store orders with payment mode and totals.",
-                  file: "tikk-stock-orders.csv",
-                  run: () =>
-                    downloadCsv(
-                      "tikk-stock-orders.csv",
-                      ["Order #", "Customer", "Payment", "Total INR", "Stage", "Rider PIN"],
-                      storeOrders.map((o) => [o.orderNo, o.customer, o.payment, o.total, o.stage, o.pickupPin]),
-                      "Orders & COD CSV",
-                    ),
-                },
-              ].map((rep) => (
-                <article key={rep.file} className="flex flex-col justify-between rounded-2xl border border-[#F0E4D2] bg-white p-4">
+          {tab === "rep" && (() => {
+            const reportDefs = [
+              {
+                title: "Full Inventory Valuation Report",
+                desc: "All SKUs, selling price, MRP, stock count, reorder level & stock value.",
+                file: "tikk-stock-inventory.csv",
+                badge: `${items.length} SKUs · ${formatInr(metrics.totalValue)}`,
+                headers: ["SKU", "Name", "Stock", "Price", "Valuation"],
+                rows: items.map((p) => [p.sku, p.name, p.stock, formatInr(p.price), formatInr(p.stock * p.price)]),
+                run: () =>
+                  downloadCsv(
+                    "tikk-stock-inventory.csv",
+                    ["SKU", "Name", "Brand", "Category", "Stock", "Reorder", "Price", "MRP", "Valuation"],
+                    items.map((p) => [p.sku, p.name, p.brand, p.cat, p.stock, p.re, p.price, p.mrp, p.stock * p.price]),
+                    "Inventory Valuation CSV",
+                  ),
+              },
+              {
+                title: "Low Stock & Reorder Queue",
+                desc: "Items at or below reorder threshold with recommended purchase quantities.",
+                file: "tikk-stock-reorder.csv",
+                badge: `${lowItems.length} low SKUs`,
+                headers: ["SKU", "Name", "Stock", "Reorder At", "Suggested Qty"],
+                rows: lowItems.map((p) => [p.sku, p.name, p.stock, p.re, Math.max(1, p.re * 3 - p.stock)]),
+                run: () =>
+                  downloadCsv(
+                    "tikk-stock-reorder.csv",
+                    ["SKU", "Name", "Category", "Current Stock", "Reorder At", "Suggested Qty"],
+                    lowItems.map((p) => [p.sku, p.name, p.cat, p.stock, p.re, Math.max(1, p.re * 3 - p.stock)]),
+                    "Low Stock Reorder CSV",
+                  ),
+              },
+              {
+                title: "Expiring Batches (FEFO)",
+                desc: "Perishable items expiring within 3 days for markdown or clearance.",
+                file: "tikk-stock-expiring.csv",
+                badge: `${metrics.expiring.length} batches`,
+                headers: ["SKU", "Name", "Category", "Stock", "Expires"],
+                rows: metrics.expiring.map((p) => [p.sku, p.name, p.cat, p.stock, `${p.exp ?? 0}d`]),
+                run: () =>
+                  downloadCsv(
+                    "tikk-stock-expiring.csv",
+                    ["SKU", "Name", "Category", "Stock", "Expires In (Days)"],
+                    metrics.expiring.map((p) => [p.sku, p.name, p.cat, p.stock, p.exp ?? 0]),
+                    "Expiring FEFO CSV",
+                  ),
+              },
+              {
+                title: "Orders & COD Settlement",
+                desc: "Active and dispatched dark-store orders with payment mode and totals.",
+                file: "tikk-stock-orders.csv",
+                badge: `${storeOrders.length} orders`,
+                headers: ["Order #", "Customer", "Payment", "Total", "Stage"],
+                rows: storeOrders.map((o) => [`#${o.orderNo}`, o.customer, o.payment, formatInr(o.total), o.stage]),
+                run: () =>
+                  downloadCsv(
+                    "tikk-stock-orders.csv",
+                    ["Order #", "Customer", "Payment", "Total INR", "Stage", "Rider PIN"],
+                    storeOrders.map((o) => [o.orderNo, o.customer, o.payment, o.total, o.stage, o.pickupPin]),
+                    "Orders & COD CSV",
+                  ),
+              },
+            ];
+
+            const activePreview = reportDefs.find((r) => r.file === previewReport) ?? null;
+
+            return (
+              <div className="space-y-3.5">
+                {/* Summary Export Strip */}
+                <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#F0E4D2] bg-gradient-to-r from-[#FFF7EC] via-white to-[#FBE3CF]/40 p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="grid size-8 place-items-center rounded-xl bg-[#FBE3CF] text-[#A8421A]">
-                        <FileSpreadsheet className="size-4" />
-                      </span>
-                      <strong className="text-sm font-bold">{rep.title}</strong>
+                    <strong className="text-sm font-bold text-[#3A2418]">Store Audit &amp; Accounting Exports</strong>
+                    <p className="mt-0.5 text-xs text-[#8A7060]">
+                      {items.length} SKUs · {lowItems.length} reorder alerts · {storeOrders.length} orders ready for CSV export
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => reportDefs.forEach((r) => r.run())}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#A8421A] px-4 py-2 text-xs font-semibold text-white hover:bg-[#8E3513]"
+                  >
+                    <Download className="size-3.5" /> Download All (4 CSVs)
+                  </button>
+                </section>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {reportDefs.map((rep) => {
+                    const isPreview = previewReport === rep.file;
+                    return (
+                      <article
+                        key={rep.file}
+                        className={`flex flex-col justify-between rounded-2xl border bg-white p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)] transition-all ${
+                          isPreview ? "border-[#A8421A] ring-1 ring-[#A8421A]/20" : "border-[#F0E4D2]"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5">
+                              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#FBE3CF] text-[#A8421A]">
+                                <FileSpreadsheet className="size-4" />
+                              </span>
+                              <div>
+                                <strong className="block text-sm font-bold text-[#3A2418]">{rep.title}</strong>
+                                <span className="font-mono text-[11px] text-[#8A7060]">{rep.file}</span>
+                              </div>
+                            </div>
+                            <span className="shrink-0 rounded-full border border-[#EADBC6] bg-[#FCF9F4] px-2.5 py-0.5 text-[11px] font-semibold text-[#3A2418]">
+                              {rep.badge}
+                            </span>
+                          </div>
+                          <p className="mt-2.5 text-xs text-[#8A7060]">{rep.desc}</p>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#F5EBDB] pt-3">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewReport(isPreview ? null : rep.file)}
+                            className="rounded-full border border-[#EADBC6] bg-[#FBF6EE] px-3 py-1.5 text-xs font-semibold text-[#3A2418] hover:bg-[#FBE3CF]"
+                          >
+                            {isPreview ? "Hide Preview" : "Preview Rows"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={rep.run}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[#A8421A] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#8E3513]"
+                          >
+                            <Download className="size-3.5" /> Download CSV
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                {/* Live Inline Report Preview */}
+                {activePreview && (
+                  <section className="rounded-2xl border border-[#F0E4D2] bg-white p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                    <div className="mb-2.5 flex items-center justify-between">
+                      <div>
+                        <strong className="text-sm font-bold text-[#3A2418]">
+                          Preview: {activePreview.title}
+                        </strong>
+                        <p className="text-[11px] text-[#8A7060]">
+                          Showing first {Math.min(5, activePreview.rows.length)} of {activePreview.rows.length} rows
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewReport(null)}
+                        className="rounded-full border border-[#EADBC6] px-3 py-1 text-xs font-semibold text-[#8A7060] hover:text-[#3A2418]"
+                      >
+                        Close
+                      </button>
                     </div>
-                    <p className="mt-2 text-xs text-[#8A7060]">{rep.desc}</p>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between border-t border-[#F5EBDB] pt-3">
-                    <span className="font-mono text-[11px] text-[#8A7060]">{rep.file}</span>
-                    <button
-                      type="button"
-                      onClick={rep.run}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#A8421A] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#8E3513]"
-                    >
-                      <Download className="size-3.5" /> Download CSV
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
+                    <div className="overflow-x-auto rounded-xl border border-[#F5EBDB]">
+                      <table className="w-full min-w-[480px] border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-[#FBF6EE] text-left text-[11px] font-semibold text-[#8A7060]">
+                            {activePreview.headers.map((h) => (
+                              <th key={h} className="px-3 py-2">
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {activePreview.rows.slice(0, 5).map((row, idx) => (
+                            <tr key={idx} className="border-t border-[#F5EBDB]">
+                              {row.map((cell, cIdx) => (
+                                <td key={cIdx} className="px-3 py-2 font-medium text-[#3A2418]">
+                                  {cell}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                )}
+              </div>
+            );
+          })()}
 
           {tab === "inv" && (() => {
             const selectedIds = filteredItems.filter((p) => selectedInvIds[p.id]).map((p) => p.id);
