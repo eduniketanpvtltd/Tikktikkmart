@@ -374,6 +374,7 @@ function TikkStockPortal() {
   const [pinInputs, setPinInputs] = useState<Record<string, string>>({});
   const [selectedInvIds, setSelectedInvIds] = useState<Record<string, boolean>>({});
   const [supplierFilter, setSupplierFilter] = useState<string>("All");
+  const [shipFilter, setShipFilter] = useState<"all" | "ready" | "instore" | "handed">("all");
 
   const rackBySkuId = useMemo(() => {
     const map: Record<string, string> = {};
@@ -1978,76 +1979,187 @@ function TikkStockPortal() {
             </div>
           )}
 
-          {tab === "ship" && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                <div className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5">
-                  <span className="text-xs text-[#8A7060]">Ready for Rider Pickup</span>
-                  <b className="mt-1 block text-2xl font-bold tabular-nums">
-                    {storeOrders.filter((o) => o.stage === "ready").length}
-                  </b>
-                </div>
-                <div className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5">
-                  <span className="text-xs text-[#8A7060]">Handed Over Today</span>
-                  <b className="mt-1 block text-2xl font-bold tabular-nums text-[#2E7D4F]">
-                    {storeOrders.filter((o) => o.stage === "handed").length}
-                  </b>
-                </div>
-                <div className="col-span-2 rounded-2xl border border-[#F0E4D2] bg-white p-3.5 sm:col-span-1">
-                  <span className="text-xs text-[#8A7060]">COD Reconciliation</span>
-                  <b className="mt-1 block text-2xl font-bold tabular-nums text-[#A8421A]">
-                    {formatInr(
-                      storeOrders.filter((o) => o.payment === "COD").reduce((s, o) => s + o.total, 0),
-                    )}
-                  </b>
-                </div>
-              </div>
+          {tab === "ship" && (() => {
+            const readyCount = storeOrders.filter((o) => o.stage === "ready").length;
+            const handedCount = storeOrders.filter((o) => o.stage === "handed").length;
+            const codTotal = storeOrders.filter((o) => o.payment === "COD").reduce((s, o) => s + o.total, 0);
+            const riders = ["Arjun K. · EV Bike", "Rohan M. · Scooter", "Suman D. · EV Bike"];
+            const visibleShipments = storeOrders.filter((o) => {
+              if (shipFilter === "ready") return o.stage === "ready";
+              if (shipFilter === "handed") return o.stage === "handed";
+              if (shipFilter === "instore") return o.stage === "new" || o.stage === "packing";
+              return true;
+            });
 
-              <div className="grid gap-3 md:grid-cols-2">
-                {storeOrders.map((order) => (
-                  <article key={order.id} className="rounded-2xl border border-[#F0E4D2] bg-white p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <strong className="text-sm font-bold">Order #{order.orderNo}</strong>
-                        <p className="text-xs text-[#8A7060]">
-                          {order.customer} · {order.payment} · {formatInr(order.total)}
-                        </p>
-                      </div>
-                      <span
-                        className={`rounded-lg px-2 py-0.5 text-[11px] font-bold ${
-                          order.stage === "handed"
-                            ? "bg-[#E3F0DA] text-[#2E7D4F]"
-                            : order.stage === "ready"
-                              ? "bg-[#FFF0DA] text-[#B7791F]"
-                              : "bg-[#FBF6EE] text-[#8A7060]"
+            return (
+              <div className="space-y-3.5">
+                {/* 4 Executive KPI Cards */}
+                <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+                  <div className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                    <div className="flex items-center justify-between text-xs text-[#8A7060]">
+                      <span>Ready for Pickup</span>
+                      <Package className="size-4 text-[#B7791F]" />
+                    </div>
+                    <b className="mt-1.5 block text-2xl font-bold tabular-nums">{readyCount}</b>
+                    <span className="text-[11px] text-[#8A7060]">Awaiting rider PIN</span>
+                  </div>
+
+                  <div className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                    <div className="flex items-center justify-between text-xs text-[#8A7060]">
+                      <span>Dispatched Today</span>
+                      <Truck className="size-4 text-[#2E7D4F]" />
+                    </div>
+                    <b className="mt-1.5 block text-2xl font-bold tabular-nums text-[#2E7D4F]">{handedCount}</b>
+                    <span className="text-[11px] text-[#8A7060]">Verified handoffs</span>
+                  </div>
+
+                  <div className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                    <div className="flex items-center justify-between text-xs text-[#8A7060]">
+                      <span>COD Reconciliation</span>
+                      <IndianRupee className="size-4 text-[#A8421A]" />
+                    </div>
+                    <b className="mt-1.5 block text-2xl font-bold tabular-nums text-[#A8421A]">{formatInr(codTotal)}</b>
+                    <span className="text-[11px] text-[#8A7060]">Cash to collect</span>
+                  </div>
+
+                  <div className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                    <div className="flex items-center justify-between text-xs text-[#8A7060]">
+                      <span>Active Riders</span>
+                      <UserCheck className="size-4 text-[#2E7D4F]" />
+                    </div>
+                    <b className="mt-1.5 block text-2xl font-bold tabular-nums">3</b>
+                    <span className="text-[11px] font-medium text-[#2E7D4F]">Avg pickup 2.4m</span>
+                  </div>
+                </div>
+
+                {/* Stage Filter Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {(
+                      [
+                        ["all", "All shipments"],
+                        ["ready", `Ready (${readyCount})`],
+                        ["instore", "In store"],
+                        ["handed", `Dispatched (${handedCount})`],
+                      ] as const
+                    ).map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setShipFilter(id)}
+                        className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                          shipFilter === id
+                            ? "border-[#A8421A] bg-[#A8421A] text-white"
+                            : "border-[#EADBC6] bg-white text-[#3A2418] hover:bg-[#FFF8EE]"
                         }`}
                       >
-                        {order.stage === "handed" ? "Dispatched" : order.stage === "ready" ? `PIN ${order.pickupPin}` : "In store"}
-                      </span>
-                    </div>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-xs text-[#8A7060]">{visibleShipments.length} shipments shown</span>
+                </div>
 
-                    {order.stage === "ready" && (
-                      <div className="mt-3 flex items-center gap-2 border-t border-[#F5EBDB] pt-3">
-                        <input
-                          value={pinInputs[order.id] ?? ""}
-                          onChange={(e) => setPinInputs((prev) => ({ ...prev, [order.id]: e.target.value }))}
-                          placeholder={`Enter Rider PIN (${order.pickupPin})`}
-                          className="h-9 flex-1 rounded-xl border border-[#EADBC6] bg-[#FBF6EE] px-3 text-xs font-mono"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => verifyRiderHandover(order)}
-                          className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#A8421A] px-3.5 text-xs font-semibold text-white hover:bg-[#8E3513]"
-                        >
-                          <ShieldCheck className="size-3.5" /> Verify &amp; Handover
-                        </button>
-                      </div>
-                    )}
-                  </article>
-                ))}
+                {/* Uniform Shipment Cards Grid */}
+                <div className="grid gap-3 md:grid-cols-2">
+                  {visibleShipments.map((order, idx) => {
+                    const riderName = riders[idx % riders.length];
+                    return (
+                      <article
+                        key={order.id}
+                        className="flex flex-col justify-between rounded-2xl border border-[#F0E4D2] bg-white p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]"
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-2 border-b border-[#F5EBDB] pb-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <strong className="text-sm font-bold text-[#3A2418]">Order #{order.orderNo}</strong>
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                    order.payment === "COD"
+                                      ? "bg-[#FFF0DA] text-[#B7791F]"
+                                      : "bg-[#E3F0DA] text-[#2E7D4F]"
+                                  }`}
+                                >
+                                  {order.payment}
+                                </span>
+                              </div>
+                              <p className="mt-0.5 text-xs text-[#8A7060]">
+                                {order.customer} · {order.items.length} items · {formatInr(order.total)}
+                              </p>
+                            </div>
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                                order.stage === "handed"
+                                  ? "bg-[#E3F0DA] text-[#2E7D4F]"
+                                  : order.stage === "ready"
+                                    ? "bg-[#FFF0DA] text-[#B7791F]"
+                                    : "bg-[#FBF6EE] text-[#8A7060]"
+                              }`}
+                            >
+                              {order.stage === "handed"
+                                ? "Dispatched"
+                                : order.stage === "ready"
+                                  ? `PIN ${order.pickupPin}`
+                                  : order.stage === "packing"
+                                    ? "Packing"
+                                    : "Queued"}
+                            </span>
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-between text-xs text-[#8A7060]">
+                            <span className="inline-flex items-center gap-1.5">
+                              <Truck className="size-3.5 text-[#A8421A]" />
+                              <strong className="font-medium text-[#3A2418]">{riderName}</strong>
+                            </span>
+                            <span>1 sealed bag</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 border-t border-[#F5EBDB] pt-3">
+                          {order.stage === "ready" ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                value={pinInputs[order.id] ?? ""}
+                                onChange={(e) => setPinInputs((prev) => ({ ...prev, [order.id]: e.target.value }))}
+                                placeholder={`Enter Rider PIN (${order.pickupPin})`}
+                                className="h-9 flex-1 rounded-full border border-[#EADBC6] bg-[#FBF6EE] px-3.5 font-mono text-xs focus:border-[#A8421A] focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => verifyRiderHandover(order)}
+                                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[#A8421A] px-4 text-xs font-semibold text-white hover:bg-[#8E3513]"
+                              >
+                                <ShieldCheck className="size-3.5" /> Verify &amp; Handover
+                              </button>
+                            </div>
+                          ) : order.stage === "handed" ? (
+                            <div className="flex items-center justify-between text-xs text-[#2E7D4F]">
+                              <span className="inline-flex items-center gap-1.5 font-semibold">
+                                <CheckCircle2 className="size-4" /> Handed over to rider
+                              </span>
+                              <span className="font-mono text-[11px] text-[#8A7060]">PIN {order.pickupPin}</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-[#8A7060]">Awaiting store packing completion</span>
+                              <button
+                                type="button"
+                                onClick={() => setTab("orders")}
+                                className="rounded-full border border-[#EADBC6] bg-[#FBF6EE] px-3 py-1 text-xs font-semibold text-[#A8421A] hover:bg-[#FBE3CF]"
+                              >
+                                Open Picking Queue →
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {tab === "rep" && (
             <div className="grid gap-3 md:grid-cols-2">
