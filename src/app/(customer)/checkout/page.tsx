@@ -1,4 +1,6 @@
 "use client";
+import { formatRupees } from "@/components/customer/AnimatedRupees";
+import { useCartQuote } from "@/lib/pricing/useCartQuote";
 import { LayoutSkeleton } from "@/components/ui/LayoutSkeleton";
 import React, { useRef, useState } from "react";
 import Link from "next/link";
@@ -82,9 +84,11 @@ function loadRazorpayScript(): Promise<boolean> {
 export default function CheckoutPage() {
   const router = useRouter();
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { storeId, items, couponCode, tip, location, clearCart } = useCartStore();
 
+  const { data: quote, isLoading: quoteLoading, isFetching: checkingTotal, refetch: refreshTotal } = useCartQuote();
+  const addressSection = useRef<HTMLElement>(null);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<"online" | "cod">("online");
   const [selectedInstructions, setSelectedInstructions] = useState<string[]>([]);
@@ -117,25 +121,32 @@ export default function CheckoutPage() {
     enabled: Boolean(user),
     queryFn: async () => {
       const res = await apiFetch<Address[]>("/api/addresses");
-      const list = res.data ?? [];
-      if (list.length && !selectedAddressId) setSelectedAddressId(list[0].id);
-      return list;
+      return res.data ?? [];
     },
   });
 
+  const addressId = selectedAddressId || addresses.find((address) => address.is_default)?.id || addresses[0]?.id || "";
+  const addressReady = Boolean(addressId && !showNewAddr);
+  const showAddressForm = () => {
+    if (!addressId) setShowNewAddr(true);
+    addressSection.current?.scrollIntoView({ block: "start" });
+    addressSection.current?.focus({ preventScroll: true });
+  };
+
+  if (authLoading) return <LayoutSkeleton shape="order" label="Loading checkout" />;
   if (!user) {
     return (
-      <div className="max-w-md mx-auto my-8 bg-[var(--white)] rounded-3xl border border-[color:var(--theme-line)] p-8 text-center space-y-4 shadow-sm">
-        <div className="w-16 h-16 rounded-full bg-[var(--peach-light)] text-[color:var(--theme-orange-text)] flex items-center justify-center mx-auto text-2xl font-black shadow-inner">
+      <div className="max-w-md mx-auto my-8 bg-white rounded-2xl border border-[#F0E4D2] p-8 text-center space-y-4">
+        <div className="w-16 h-16 rounded-full bg-[#FBE3CF] text-[#A8421A] flex items-center justify-center mx-auto text-2xl font-black">
           ⚡
         </div>
-        <h1 className="font-black text-lg text-[color:var(--theme-ink)]">Sign in to complete checkout</h1>
-        <p className="text-xs text-[color:var(--theme-muted)]">
+        <h1 className="font-black text-lg text-[#3A2418]">Sign in to complete checkout</h1>
+        <p className="text-xs text-[#8A7060]">
           Save your delivery addresses and track your orders in real-time with TIKK TIKK MART.
         </p>
         <Link
           href="/login"
-          className="inline-block w-full py-3.5 rounded-2xl bg-[var(--theme-orange-fill)] hover:bg-[var(--theme-orange-hover)] text-white font-black text-xs uppercase tracking-wider transition-all shadow-md shadow-orange-500/20"
+          className="inline-block w-full py-3.5 rounded-full bg-[#A8421A] hover:bg-[#8E3513] text-white font-black text-xs uppercase tracking-wider transition-all"
         >
           Continue with Google
         </Link>
@@ -147,12 +158,12 @@ export default function CheckoutPage() {
 
   if (!items.length) {
     return (
-      <div className="max-w-md mx-auto my-8 bg-[var(--white)] rounded-3xl border border-[color:var(--theme-line)] p-8 text-center space-y-4 shadow-sm">
-        <h1 className="font-black text-lg text-[color:var(--theme-ink)]">No items to checkout</h1>
-        <p className="text-xs text-[color:var(--theme-muted)]">Your cart is currently empty.</p>
+      <div className="max-w-md mx-auto my-8 bg-white rounded-2xl border border-[#F0E4D2] p-8 text-center space-y-4">
+        <h1 className="font-black text-lg text-[#3A2418]">No items to checkout</h1>
+        <p className="text-xs text-[#8A7060]">Your cart is currently empty.</p>
         <Link
           href="/"
-          className="inline-block px-5 py-3 rounded-2xl bg-[var(--theme-orange-fill)] hover:bg-[var(--theme-orange-hover)] text-white text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-orange-500/20"
+          className="inline-block px-6 py-3 rounded-full bg-[#A8421A] hover:bg-[#8E3513] text-white text-xs font-black uppercase tracking-wider transition-all"
         >
           Browse Groceries
         </Link>
@@ -189,7 +200,7 @@ export default function CheckoutPage() {
   const handlePlaceOrder = async () => {
     if (placingRef.current) return;
     setError(null);
-    if (!selectedAddressId) {
+    if (!addressReady && !lockOrderFields) {
       setError("Please select or add a delivery address.");
       return;
     }
@@ -205,7 +216,7 @@ export default function CheckoutPage() {
 
       const payload = {
         storeId: effectiveStoreId,
-        addressId: selectedAddressId,
+        addressId,
         paymentMethod,
         items: items.map((i) => ({ variant_id: i.variantId, quantity: i.quantity }))
           .sort((a, b) => a.variant_id.localeCompare(b.variant_id)),
@@ -313,42 +324,32 @@ export default function CheckoutPage() {
 
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
-      {/* Back button + Title */}
-      <div className="flex items-center gap-3">
-        <Link
-          href="/cart"
-          className="p-2 rounded-xl bg-[var(--white)] border border-[color:var(--theme-line)] hover:bg-[var(--peach-light)] text-[color:var(--theme-ink)] transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
-        </Link>
+    <div className="market-checkout max-w-2xl mx-auto space-y-4">
+      <header className="market-checkout-heading">
+        <Link href="/cart" aria-label="Back to basket" className="market-checkout-back"><ArrowLeft size={20} aria-hidden="true" /></Link>
         <div>
-          <h1 className="text-lg sm:text-xl font-black text-[color:var(--theme-ink)] leading-tight">
-            Checkout
-          </h1>
-          <p className="text-[11px] text-[color:var(--theme-muted)] font-medium">
-            Delivery in 10-15 mins from nearest dark store
-          </p>
+          <p className="market-checkout-step">Step 2 of 2</p>
+          <h1>Delivery & payment</h1>
         </div>
-      </div>
+      </header>
 
       {error && !paymentOrderId && (
-        <div className="p-3.5 rounded-2xl bg-[var(--theme-danger-bg)] border border-[color:var(--theme-danger)] text-xs font-bold text-[color:var(--theme-danger)] shadow-2xs">
+        <div className="p-3.5 rounded-2xl bg-[#FDECEC] border border-[#C93B3B] text-xs font-bold text-[#B42318]">
           {error}
         </div>
       )}
 
       {/* Step 1: Delivery Address */}
-      <section id="delivery-address" className="scroll-mt-52 bg-[var(--white)] rounded-3xl border border-[color:var(--theme-line)] p-4 sm:p-5 space-y-3.5 shadow-2xs">
+      <section id="delivery-address" ref={addressSection} tabIndex={-1} className="scroll-mt-8 bg-white rounded-2xl border border-[#F0E4D2] p-4 sm:p-5 space-y-3.5">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-[color:var(--theme-ink)] flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-[color:var(--theme-orange-text)]" /> 1. Select Delivery Address
+          <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-[#3A2418] flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-[#A8421A]" /> Delivery address
           </h2>
           <button
             type="button"
             disabled={lockOrderFields}
             onClick={() => setShowNewAddr((s) => !s)}
-            className="text-xs font-black text-[color:var(--theme-orange-text)] hover:underline inline-flex items-center gap-1"
+            className="text-xs font-black text-[#A8421A] hover:underline inline-flex items-center gap-1"
           >
             <Plus className="w-3.5 h-3.5 stroke-[3]" /> Add New
           </button>
@@ -357,12 +358,12 @@ export default function CheckoutPage() {
         {loadingAddrs ? (
           <LayoutSkeleton shape="list" label="Loading saved addresses" />
         ) : addresses.length === 0 && !showNewAddr ? (
-          <div className="p-4 bg-[var(--peach-light)] rounded-2xl text-center space-y-2">
-            <p className="text-xs font-semibold text-[color:var(--theme-muted)]">No saved addresses yet.</p>
+          <div className="p-4 bg-[#FBE3CF]/55 rounded-2xl text-center space-y-2">
+            <p className="text-xs font-semibold text-[#8A7060]">No saved addresses yet.</p>
             <button
               type="button"
               onClick={() => setShowNewAddr(true)}
-              className="px-4 py-2 rounded-xl bg-[var(--theme-orange-fill)] hover:bg-[var(--theme-orange-hover)] text-white text-xs font-bold transition-colors"
+              className="px-4 py-2 rounded-xl bg-[#A8421A] hover:bg-[#8E3513] text-white text-xs font-bold transition-colors"
             >
               Add Your Address
             </button>
@@ -370,14 +371,14 @@ export default function CheckoutPage() {
         ) : (
           <div className="space-y-2">
             {addresses.map((a) => {
-              const isSelected = selectedAddressId === a.id;
+              const isSelected = addressId === a.id;
               return (
                 <label
                   key={a.id}
                   className={`block p-3.5 rounded-2xl border cursor-pointer transition-all ${
                     isSelected
-                      ? "border-[color:var(--border-orange)] bg-[var(--peach-light)] shadow-xs ring-1 ring-[color:var(--border-orange)]/20"
-                      : "border-[color:var(--theme-line)] bg-[var(--white)] hover:bg-[var(--peach-light)]"
+                      ? "border-[#A8421A] bg-[#FBE3CF]/45 ring-1 ring-[#A8421A]/20"
+                      : "border-[#F0E4D2] bg-white hover:bg-[#FBF6EE]"
                   }`}
                 >
                   <div className="checkout-address-summary flex items-start gap-3">
@@ -387,18 +388,18 @@ export default function CheckoutPage() {
                       checked={isSelected}
                       disabled={lockOrderFields}
                       onChange={() => setSelectedAddressId(a.id)}
-                      className="mt-1 accent-[var(--border-orange)] w-4 h-4"
+                      className="mt-1 accent-[#A8421A] w-4 h-4"
                     />
                     <div className="text-xs space-y-0.5">
                       <div className="layout-wrap flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="font-black text-[color:var(--theme-ink)] text-sm">
+                        <span className="font-black text-[#3A2418] text-sm">
                           {a.label || "Home"}
                         </span>
-                        <span className="text-[11px] text-[color:var(--theme-muted)] font-medium">
+                        <span className="text-[11px] text-[#8A7060] font-medium">
                           · {a.receiver_name} ({a.receiver_phone})
                         </span>
                       </div>
-                      <p className="text-[color:var(--theme-muted)] leading-relaxed">
+                      <p className="text-[#8A7060] leading-relaxed">
                         {a.line1}
                         {a.landmark ? `, Landmark: ${a.landmark}` : ""}
                         {a.city ? `, ${a.city}` : ""}
@@ -413,9 +414,9 @@ export default function CheckoutPage() {
 
         {/* Add New Address Form Modal/Drawer */}
         {showNewAddr && (
-          <form onSubmit={handleSaveAddress} className="checkout-address-form space-y-3 pt-3 border-t border-[color:var(--theme-line)]">
-            <div className="bg-[var(--peach-light)] p-3 rounded-2xl space-y-3">
-              <p className="text-xs font-black text-[color:var(--theme-ink)]">Pin location on map:</p>
+          <form onSubmit={handleSaveAddress} className="checkout-address-form space-y-3 pt-3 border-t border-[#F0E4D2]">
+            <div className="bg-[#FBF6EE] border border-[#F0E4D2] p-3.5 rounded-2xl space-y-3">
+              <p className="text-xs font-black text-[#3A2418]">Pin location on map:</p>
               <LocationPicker
                 initialLat={addrForm.lat}
                 initialLng={addrForm.lng}
@@ -435,14 +436,14 @@ export default function CheckoutPage() {
                   placeholder="Receiver Name"
                   value={addrForm.receiver_name}
                   onChange={(e) => setAddrForm((f) => ({ ...f, receiver_name: e.target.value }))}
-                  className="border rounded-xl px-3 py-2 text-xs bg-[var(--white)] focus:outline-none focus:border-[color:var(--border-orange)]"
+                  className="border border-[#EADBC6] rounded-xl px-3 py-2 text-xs bg-white text-[#3A2418] focus:outline-none focus:border-[#A8421A]"
                 />
                 <input
                   required
                   placeholder="Phone Number"
                   value={addrForm.receiver_phone}
                   onChange={(e) => setAddrForm((f) => ({ ...f, receiver_phone: e.target.value }))}
-                  className="border rounded-xl px-3 py-2 text-xs bg-[var(--white)] focus:outline-none focus:border-[color:var(--border-orange)]"
+                  className="border border-[#EADBC6] rounded-xl px-3 py-2 text-xs bg-white text-[#3A2418] focus:outline-none focus:border-[#A8421A]"
                 />
               </div>
               <input
@@ -450,33 +451,33 @@ export default function CheckoutPage() {
                 placeholder="House / Flat / Floor / Street Address"
                 value={addrForm.line1}
                 onChange={(e) => setAddrForm((f) => ({ ...f, line1: e.target.value }))}
-                className="w-full border rounded-xl px-3 py-2 text-xs bg-[var(--white)] focus:outline-none focus:border-[color:var(--border-orange)]"
+                className="w-full border border-[#EADBC6] rounded-xl px-3 py-2 text-xs bg-white text-[#3A2418] focus:outline-none focus:border-[#A8421A]"
               />
               <div className="grid grid-cols-2 gap-2">
                 <input
                   placeholder="Label (Home / Office / Other)"
                   value={addrForm.label}
                   onChange={(e) => setAddrForm((f) => ({ ...f, label: e.target.value }))}
-                  className="border rounded-xl px-3 py-2 text-xs bg-[var(--white)] focus:outline-none focus:border-[color:var(--border-orange)]"
+                  className="border border-[#EADBC6] rounded-xl px-3 py-2 text-xs bg-white text-[#3A2418] focus:outline-none focus:border-[#A8421A]"
                 />
                 <input
                   placeholder="Nearby Landmark (optional)"
                   value={addrForm.landmark}
                   onChange={(e) => setAddrForm((f) => ({ ...f, landmark: e.target.value }))}
-                  className="border rounded-xl px-3 py-2 text-xs bg-[var(--white)] focus:outline-none focus:border-[color:var(--border-orange)]"
+                  className="border border-[#EADBC6] rounded-xl px-3 py-2 text-xs bg-white text-[#3A2418] focus:outline-none focus:border-[#A8421A]"
                 />
               </div>
               <div className="flex gap-2 justify-end">
                 <button
                   type="button"
                   onClick={() => setShowNewAddr(false)}
-                  className="px-4 py-2 rounded-xl border text-xs font-bold text-[color:var(--theme-muted)] hover:bg-[var(--theme-skeleton)]"
+                  className="px-4 py-2 rounded-xl border border-[#EADBC6] text-xs font-bold text-[#8A7060] hover:bg-[#F0E4D2]/50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit" disabled={addressPending}
-                  className="px-5 py-2 rounded-xl bg-[var(--theme-orange-fill)] hover:bg-[var(--theme-orange-hover)] text-white text-xs font-black uppercase tracking-wider transition-colors shadow-sm"
+                  className="px-5 py-2 rounded-xl bg-[#A8421A] hover:bg-[#8E3513] text-white text-xs font-black uppercase tracking-wider transition-colors"
                 >
                   {addressPending ? "Saving…" : "Save Address"}
                 </button>
@@ -487,9 +488,9 @@ export default function CheckoutPage() {
       </section>
 
       {/* Step 2: Payment Method */}
-      <section className="bg-[var(--white)] rounded-3xl border border-[color:var(--theme-line)] p-4 sm:p-5 space-y-3.5 shadow-2xs">
-        <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-[color:var(--theme-ink)] flex items-center gap-2">
-          <CreditCard className="w-4 h-4 text-[color:var(--theme-orange-text)]" /> 2. Payment Method
+      <section className="bg-white rounded-2xl border border-[#F0E4D2] p-4 sm:p-5 space-y-3.5">
+        <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-[#3A2418] flex items-center gap-2">
+          <CreditCard className="w-4 h-4 text-[#A8421A]" /> Payment method
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -499,21 +500,16 @@ export default function CheckoutPage() {
             onClick={() => setPaymentMethod("online")}
             className={`p-4 rounded-2xl border text-left flex items-start gap-3 transition-all ${
               paymentMethod === "online"
-                ? "border-[color:var(--border-orange)] bg-[var(--peach-light)] shadow-xs ring-1 ring-[color:var(--border-orange)]/20"
-                : "border-[color:var(--theme-line)] bg-[var(--white)] hover:bg-[var(--peach-light)]"
+                ? "border-[#A8421A] bg-[#FBE3CF]/45 ring-1 ring-[#A8421A]/20"
+                : "border-[#F0E4D2] bg-white hover:bg-[#FBF6EE]"
             }`}
           >
-            <div className="w-9 h-9 rounded-xl bg-[var(--peach-light)] text-[color:var(--theme-orange-text)] flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-[#FBE3CF] text-[#A8421A] flex items-center justify-center shrink-0">
               <CreditCard className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-1.5">
-                <p className="text-xs sm:text-sm font-black text-[color:var(--theme-ink)]">Online Payment</p>
-                <span className="text-[9px] font-black bg-[var(--peach)] text-[color:var(--theme-ink)] px-1.5 py-0.5 rounded font-mono">
-                  FASTER
-                </span>
-              </div>
-              <p className="text-[11px] text-[color:var(--theme-muted)] mt-0.5">
+              <p className="text-xs sm:text-sm font-black text-[#3A2418]">Online payment</p>
+              <p className="text-[11px] text-[#8A7060] mt-0.5">
                 UPI (GPay, PhonePe, Paytm), Cards, Netbanking via Razorpay
               </p>
             </div>
@@ -525,16 +521,16 @@ export default function CheckoutPage() {
             onClick={() => setPaymentMethod("cod")}
             className={`p-4 rounded-2xl border text-left flex items-start gap-3 transition-all ${
               paymentMethod === "cod"
-                ? "border-[color:var(--border-orange)] bg-[var(--peach-light)] shadow-xs ring-1 ring-[color:var(--border-orange)]/20"
-                : "border-[color:var(--theme-line)] bg-[var(--white)] hover:bg-[var(--peach-light)]"
+                ? "border-[#A8421A] bg-[#FBE3CF]/45 ring-1 ring-[#A8421A]/20"
+                : "border-[#F0E4D2] bg-white hover:bg-[#FBF6EE]"
             }`}
           >
-            <div className="w-9 h-9 rounded-xl bg-[var(--theme-warning-bg)] text-[color:var(--theme-warning)] flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-[#FFF0DA] text-[#A8421A] flex items-center justify-center shrink-0">
               <Banknote className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs sm:text-sm font-black text-[color:var(--theme-ink)]">Cash on Delivery</p>
-              <p className="text-[11px] text-[color:var(--theme-muted)] mt-0.5">
+              <p className="text-xs sm:text-sm font-black text-[#3A2418]">Cash on Delivery</p>
+              <p className="text-[11px] text-[#8A7060] mt-0.5">
                 Pay cash or QR to rider upon doorstep arrival (up to ₹2000)
               </p>
             </div>
@@ -543,9 +539,9 @@ export default function CheckoutPage() {
       </section>
 
       {/* Step 3: Delivery Instructions */}
-      <section className="bg-[var(--white)] rounded-3xl border border-[color:var(--theme-line)] p-4 sm:p-5 space-y-3 shadow-2xs">
-        <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-[color:var(--theme-ink)]">
-          3. Delivery Instructions for Partner
+      <section className="bg-white rounded-2xl border border-[#F0E4D2] p-4 sm:p-5 space-y-3">
+        <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-[#3A2418]">
+          Delivery instructions
         </h2>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -560,8 +556,8 @@ export default function CheckoutPage() {
                 onClick={() => toggleInstruction(t.label)}
                 className={`p-2.5 rounded-xl border text-center flex flex-col items-center gap-1.5 transition-all ${
                   isSelected
-                    ? "bg-[var(--peach-light)] border-[color:var(--border-orange)] text-[color:var(--theme-orange-text)] font-black"
-                    : "bg-[var(--peach-light)] border-[color:var(--theme-line)] text-[color:var(--theme-ink)] font-medium hover:bg-[var(--theme-skeleton)]"
+                    ? "bg-[#FBE3CF] border-[#A8421A] text-[#A8421A] font-black"
+                    : "bg-[#FBF6EE] border-[#F0E4D2] text-[#3A2418] font-medium hover:bg-[#FBE3CF]/45"
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -577,43 +573,32 @@ export default function CheckoutPage() {
           value={customInstruction}
           onChange={(e) => setCustomInstruction(e.target.value)}
           placeholder="Additional note (e.g. Ring phone once outside building)"
-          className="w-full border border-[color:var(--theme-line)] rounded-xl px-3 py-2 text-xs text-[color:var(--theme-ink)] focus:outline-none focus:border-[color:var(--border-orange)]"
+          className="w-full border border-[#EADBC6] bg-[#FBF6EE] rounded-xl px-3 py-2 text-xs text-[#3A2418] focus:outline-none focus:border-[#A8421A]"
         />
       </section>
 
-      {/* Trust Badge */}
-      <div className="flex items-center justify-center gap-2 text-xs text-[color:var(--theme-muted)]">
-        <ShieldCheck className="w-4 h-4 text-[color:var(--theme-orange-text)]" />
-        <span>100% Safe & Contactless Delivery · Powered by Razorpay</span>
-      </div>
+      {paymentMethod === "online" && <p className="market-payment-note"><ShieldCheck size={16} aria-hidden="true" /> Online payments are processed by Razorpay</p>}
 
-      {/* Bottom Sticky CTA Button */}
-      <div className="sticky bottom-16 sm:bottom-4 z-20 space-y-2 pt-2">
+      <div className="market-payment-dock">
         {paymentOrderId && error && (
-          <div role="status" className="rounded-xl border border-[color:var(--theme-line)] bg-[var(--white)] p-3 text-sm shadow-sm">
+          <div role="status" className="rounded-xl border border-[#F0E4D2] bg-white p-3 text-sm text-[#3A2418]">
             <p>{error}</p>
-            <Link href={`/orders/${paymentOrderId}`} className="mt-1 inline-block font-bold text-[color:var(--theme-orange-text)] underline">View order status</Link>
+            <Link href={`/orders/${paymentOrderId}`} className="mt-1 inline-block font-bold text-[#A8421A] underline">View order status</Link>
           </div>
         )}
-        <button
-          type="button"
-          disabled={placing}
-          onClick={handlePlaceOrder}
-          className="w-full py-4 rounded-2xl bg-[var(--theme-orange-fill)] hover:bg-[var(--theme-orange-hover)] active:scale-[0.99] disabled:opacity-50 text-white font-black text-sm uppercase tracking-wider transition-all shadow-xl shadow-orange-500/25 flex items-center justify-center gap-2"
-        >
-          {placing ? (
-            <div className="flex items-center gap-2">
-              <span className="layout-busy-marker" aria-hidden="true" />
-              <span>Processing Order...</span>
-            </div>
-          ) : retryingOrder || paymentOrderId ? (
-            <span>{paymentOrderId ? "Retry payment" : "Retry checkout"}</span>
-          ) : paymentMethod === "online" ? (
-            <span>Pay & Place Order ⚡</span>
-          ) : (
-            <span>Place Cash on Delivery Order 🛵</span>
-          )}
-        </button>
+        <div className="market-payment-summary">
+          <div>
+            <p>Total</p>
+            <strong aria-live="polite">{quote ? formatRupees(quote.bill.grandTotal) : checkingTotal || quoteLoading ? "Checking…" : "Unavailable"}</strong>
+          </div>
+          <button type="button" disabled={placing || loadingAddrs || (addressReady && !lockOrderFields && !quote && checkingTotal)}
+            onClick={lockOrderFields ? handlePlaceOrder : !addressReady ? showAddressForm : quote ? handlePlaceOrder : () => void refreshTotal()}>
+            {placing ? "Processing order…" : paymentOrderId ? "Retry payment" : retryingOrder ? "Retry checkout"
+              : !addressId ? "Add address details" : showNewAddr ? "Finish address"
+                : !quote ? checkingTotal ? "Checking total…" : "Refresh total"
+                : paymentMethod === "online" ? "Proceed to pay" : "Place order"}
+          </button>
+        </div>
       </div>
     </div>
   );

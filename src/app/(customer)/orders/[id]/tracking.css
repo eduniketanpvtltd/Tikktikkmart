@@ -1,6 +1,14 @@
 [data-customer-app]:has(.order-tracking) {
+  --peach-light: #FBF6EE;
+  --peach: #FBE3CF;
+  --theme-ink: #3A2418;
+  --theme-muted: #8A7060;
+  --theme-line: #F0E4D2;
+  --theme-orange-text: #A8421A;
+  --brand-orange-strong: #A8421A;
+  --theme-success: #2E7D4F;
   padding-bottom: 0;
-  background: var(--peach-light);
+  background: #FBF6EE;
 }
 [data-customer-app] > main:has(> .order-tracking) {
   width: 100%;
@@ -13,8 +21,8 @@
   width: min(100%, var(--tracking-width));
   margin-inline: auto;
   padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
-  background: color-mix(in srgb, var(--peach-light) 64%, var(--white));
-  color: var(--theme-ink);
+  background: #FBF6EE;
+  color: #3A2418;
   font-variant-numeric: tabular-nums;
 }
 .order-tracking :where(a, button, [tabindex]):focus-visible,
@@ -98,7 +106,13 @@
 .tracking-progress span { display: block; height: 100%; border-radius: inherit; background: var(--brand-orange-strong); transform-origin: left; transition: transform .65s cubic-bezier(.22,1,.36,1); }
 .tracking-content { display: grid; min-width: 0; gap: 12px; padding: 12px 14px 0; }
 .tracking-content > * { min-width: 0; }
-.tracking-card { overflow: hidden; border-radius: 18px; background: var(--white); }
+.tracking-card {
+  overflow: hidden;
+  border: 1px solid #F0E4D2;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgb(168 66 26 / 5%);
+}
 .tracking-card > h2 { padding: 14px 16px 8px; }
 .tracking-card h2 { font-size: 15px; font-weight: 800; line-height: 1.3; }
 .tracking-card h2 > span { color: var(--theme-muted); font-size: 13px; font-weight: 500; }

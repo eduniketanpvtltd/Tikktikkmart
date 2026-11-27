@@ -8,7 +8,8 @@ export function flyToCart(source: HTMLElement) {
   // Measure the pill after the cart update renders.
   requestAnimationFrame(() => {
     const detailCart = document.querySelector<HTMLElement>("[data-product-cart]");
-    const cart = detailCart ?? document.querySelector<HTMLElement>("[data-cart-pill]");
+    const mobile = document.querySelector<HTMLElement>("[data-mobile-cart-target]");
+    const cart = detailCart ?? (mobile?.getClientRects().length ? mobile : document.querySelector<HTMLElement>("[data-cart-pill]"));
     if (!cart) return;
 
     const target = (cart.querySelector("[data-cart-thumbnail]") ?? cart).getBoundingClientRect();

@@ -22,18 +22,12 @@ export function RiderDropsSkeleton() {
 
 export function RiderEarningsSkeleton() {
   return (
-    <section className="rider-card rider-earnings" role="status" aria-label="Loading rider earnings">
-      <h2>Today’s earnings</h2>
-      <div className="flex items-center justify-between gap-2" aria-hidden="true">
-        <i className="layout-block rider-earnings-placeholder w-28" />
-        <i className="layout-block h-8 w-24" />
-      </div>
-      <div className="rider-metrics" aria-hidden="true">
+    <section className="rider-card rider-metrics-card" role="status" aria-label="Loading rider earnings">
+      <div className="rider-metric-strip" aria-hidden="true">
         {Array.from({ length: 3 }, (_, index) => (
-          <div key={index} className="rider-metric-placeholder">
-            <i className="layout-block h-2.5 w-3/4" />
-            <i className="layout-block h-4 w-1/2" />
-            <i className="layout-block h-2.5 w-2/3" />
+          <div key={index} className="flex flex-col items-center justify-center gap-2">
+            <i className="layout-block h-2.5 w-10" />
+            <i className="layout-block h-4 w-12" />
           </div>
         ))}
       </div>
@@ -64,6 +58,15 @@ export function RiderHomeSkeleton() {
             </div>
             <div className="rider-duty-zone"><i className="layout-block h-4 w-1/2" /></div>
           </div>
+          <div className="flex h-6 items-center justify-between">
+            <i className="layout-block h-4 w-28" />
+            <i className="layout-block h-3 w-16" />
+          </div>
+          <div className="rider-card px-4 py-5">
+            <div className="rider-radar"><div className="layout-block size-[54px] rounded-full" /></div>
+            <i className="layout-block mx-auto my-1 h-[19px] w-44" />
+            <i className="layout-block mx-auto mt-2 h-4 w-2/3" />
+          </div>
           <RiderEarningsSkeleton />
           <div className="rider-card flex items-center gap-3">
             <i className="layout-block size-11 shrink-0" />
@@ -72,11 +75,6 @@ export function RiderHomeSkeleton() {
               <i className="layout-block h-2.5 w-20" />
             </div>
             <i className="layout-block h-11 w-16" />
-          </div>
-          <div className="rider-card px-4 py-5">
-            <div className="rider-radar"><div className="layout-block size-[54px] rounded-full" /></div>
-            <i className="layout-block mx-auto my-1 h-[19px] w-44" />
-            <i className="layout-block mx-auto mt-2 h-4 w-2/3" />
           </div>
           <div className="rider-card">
             <div className="flex h-11 items-center"><i className="layout-block h-4 w-28" /></div>

@@ -37,6 +37,19 @@ export const POST = withAuth(["rider", "admin"], async (req, { user, params }) =
     deliver: "delivered",
   } as const;
 
+  // Offers can be accepted while the store is picking. Promote a now-packed
+  // order before recording arrival if the original accept could not do it.
+  if (step === "arrived-store" && order.status === "packed" && order.rider_id) {
+    const { error: assignmentError } = await db.rpc("transition_order", {
+      p_order: order.id,
+      p_to: "rider_assigned",
+      p_actor: user.id,
+      p_actor_role: user.role,
+      p_note: "Rider assignment confirmed at pickup",
+    });
+    if (assignmentError) return fail(assignmentError.message, 400);
+  }
+
   const toStatus = mapStep[step];
   const { data: updated, error } = await db.rpc("transition_order", {
     p_order: order.id,

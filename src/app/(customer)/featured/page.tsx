@@ -76,7 +76,7 @@ function FeaturedHero({ product, department, index, eta }: {
       </span>
       {source && (
         <span ref={image} data-card-image={product.slug} className="browse-hero-image">
-          <CatalogImage src={source} />
+          <CatalogImage src={source} className="object-cover" />
         </span>
       )}
     </Link>

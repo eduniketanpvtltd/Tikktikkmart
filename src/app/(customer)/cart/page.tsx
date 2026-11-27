@@ -115,9 +115,9 @@ export default function CartPage() {
   }
 
   return (
-    <div data-cart-page className="cart-review-page mx-auto min-h-svh max-w-[540px] bg-[var(--white)] text-[color:var(--theme-ink)]">
-      <header className="cart-review-header cart-screen-entry sticky top-0 z-30 flex items-center gap-3 bg-[var(--white)]" data-shadow={hasShadow ? "" : undefined}>
-        <Link href={backHref} replace aria-label="Back" className="grid size-10 shrink-0 place-items-center rounded-full bg-[var(--peach-light)] text-[color:var(--theme-orange-text)] hover:bg-[var(--peach)]"
+    <div data-cart-page className="cart-review-page mx-auto min-h-svh max-w-[540px] bg-[#FBF6EE] text-[#3A2418]">
+      <header className="cart-review-header cart-screen-entry sticky top-0 z-30 flex items-center gap-3 bg-[#FBF6EE]" data-shadow={hasShadow ? "" : undefined}>
+        <Link href={backHref} replace aria-label="Back" className="grid size-10 shrink-0 place-items-center rounded-full bg-[#FBE3CF] text-[#A8421A] hover:bg-[#F5D3B6]"
           onNavigate={(event) => {
             if (!openedFromProduct.current) return;
             event.preventDefault();
@@ -126,48 +126,55 @@ export default function CartPage() {
           <ArrowLeft aria-hidden="true" className="size-5" />
         </Link>
         <div>
-          <h1 className="text-[19px] leading-tight font-extrabold tracking-tight">My cart</h1>
-          <p className="mt-0.5 text-xs text-[color:var(--theme-muted)]">{count} {count === 1 ? "item" : "items"}</p>
+          <p className="market-checkout-step">Step 1 of 2</p>
+          <h1 className="text-[19px] leading-tight font-extrabold tracking-tight text-[#3A2418]">My cart</h1>
+          <p className="mt-0.5 text-xs text-[#8A7060]">{count} {count === 1 ? "item" : "items"}</p>
         </div>
       </header>
 
       {count > 0 ? (
         <div className="cart-screen-entry space-y-3 px-[14px] pt-3">
-          <section aria-labelledby="cart-delivery" className="cart-review-card">
+          <section aria-labelledby="cart-delivery" className="cart-review-card bg-white">
             <div className="flex items-center gap-3 p-[14px]">
-              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--peach-light)] text-[color:var(--theme-orange-text)]">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#FBE3CF] text-[#A8421A]">
                 <Clock3 aria-hidden="true" className="cart-delivery-clock size-5" />
               </span>
               <div>
-                <h2 id="cart-delivery" className="text-base leading-tight font-extrabold">
+                <h2 id="cart-delivery" className="text-base leading-tight font-extrabold text-[#3A2418]">
                   {serviceable === false ? "Choose a delivery address" : `Delivery in ${etaMinutes ?? 20} minutes`}
                 </h2>
-                <p className="mt-1 text-xs text-[color:var(--theme-muted)]">Shipment of {count} {count === 1 ? "item" : "items"}</p>
+                <p className="mt-1 text-xs text-[#8A7060]">Shipment of {count} {count === 1 ? "item" : "items"}</p>
               </div>
             </div>
+            <Link href="/checkout#delivery-address" className="market-cart-address flex items-center gap-3 px-[14px] py-3.5 hover:bg-[#FBF6EE]">
+              <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#FBE3CF] text-[#A8421A]"><MapPin aria-hidden="true" className="size-4" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold text-[#3A2418]">Delivery area</span>
+                <span className="mt-0.5 block truncate text-xs text-[#8A7060]">{location?.address || "Choose an address at checkout"}</span>
+              </span>
+              <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-[#8A7060]" />
+            </Link>
             <FreeDeliveryProgress subtotal={bill.itemsTotal} />
           </section>
 
           <CartItems items={items} variants={variants} />
 
-          {catalog && <CartSuggestions key={effectiveStore} products={catalog.products} />}
-
-          <section aria-label="Coupons and delivery address" className="cart-review-card">
+          <section aria-label="Coupons" className="cart-review-card bg-white">
             <button
               type="button"
               aria-expanded={couponOpen}
               aria-controls="cart-coupon-form"
               onClick={() => setCouponOpen((open) => !open)}
-              className="flex w-full items-center gap-3 px-[14px] py-3.5 text-left hover:bg-[var(--peach-light)]"
+              className="flex w-full items-center gap-3 px-[14px] py-3.5 text-left hover:bg-[#FBF6EE]"
             >
-              <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[var(--peach-light)] text-[color:var(--theme-orange-text)]"><Tag aria-hidden="true" className="size-4" /></span>
+              <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#FBE3CF] text-[#A8421A]"><Tag aria-hidden="true" className="size-4" /></span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-bold">Use coupons</span>
-                <span className="mt-0.5 block text-xs text-[color:var(--theme-muted)]">
+                <span className="block text-sm font-bold text-[#3A2418]">Use coupons</span>
+                <span className="mt-0.5 block text-xs text-[#8A7060]">
                   {bill.couponCode ? `${bill.couponCode} applied` : bill.couponError || "Save ₹50 with WELCOME50 on eligible orders"}
                 </span>
               </span>
-              <ChevronRight aria-hidden="true" className={`size-5 shrink-0 text-[color:var(--theme-muted)] motion-safe:transition-transform ${couponOpen ? "rotate-90" : ""}`} />
+              <ChevronRight aria-hidden="true" className={`size-5 shrink-0 text-[#8A7060] motion-safe:transition-transform ${couponOpen ? "rotate-90" : ""}`} />
             </button>
 
             <form id="cart-coupon-form" hidden={!couponOpen} onSubmit={applyCoupon}>
@@ -180,64 +187,58 @@ export default function CartPage() {
                   value={couponDraft ?? couponCode ?? ""}
                   onChange={(event) => setCouponDraft(event.target.value)}
                   placeholder="Enter coupon code"
-                  className="h-11 min-w-0 flex-1 rounded-xl border border-[color:var(--theme-line)] bg-[var(--peach-light)] px-3 text-base font-semibold focus:outline-2 focus:outline-[color:var(--border-orange)]/60"
+                  className="h-11 min-w-0 flex-1 rounded-xl border border-[#EADBC6] bg-[#FBF6EE] px-3 text-base font-semibold text-[#3A2418] focus:outline-2 focus:outline-[#A8421A]/40"
                 />
-                <button type="submit" disabled={applying} className="min-h-11 rounded-xl bg-[var(--navy)] px-4 text-sm font-bold text-white disabled:opacity-60">
+                <button type="submit" disabled={applying} className="min-h-11 rounded-xl bg-[#A8421A] px-4 text-sm font-bold text-white hover:bg-[#8E3513] disabled:opacity-60">
                   {applying ? "Checking…" : "Apply"}
                 </button>
-                {couponCode && <button type="button" onClick={() => { setCoupon(null); setCouponDraft(""); }} className="w-full text-left text-xs font-bold text-[color:var(--theme-orange-text)]">Remove coupon</button>}
+                {couponCode && <button type="button" onClick={() => { setCoupon(null); setCouponDraft(""); }} className="w-full text-left text-xs font-bold text-[#A8421A]">Remove coupon</button>}
               </div>
             </form>
 
-            <Link href="/checkout#delivery-address" className="flex items-center gap-3 border-t border-[color:var(--theme-line)] px-[14px] py-3.5 hover:bg-[var(--peach-light)]">
-              <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[var(--peach-light)] text-[color:var(--theme-orange-text)]"><MapPin aria-hidden="true" className="size-4" /></span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-bold">Delivery address</span>
-                <span className="mt-0.5 block truncate text-xs text-[color:var(--theme-muted)]">{location?.address || "Select an address at checkout"}</span>
-              </span>
-              <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-[color:var(--theme-muted)]" />
-            </Link>
           </section>
 
-          <section aria-labelledby="cart-bill" className="cart-review-card p-[14px]">
-            <h2 id="cart-bill" className="mb-2 text-[15px] font-extrabold">Bill details</h2>
+          {catalog && <CartSuggestions key={effectiveStore} products={catalog.products} />}
+
+          <section aria-labelledby="cart-bill" className="cart-review-card bg-white p-[14px]">
+            <h2 id="cart-bill" className="mb-2 text-[15px] font-extrabold text-[#3A2418]">Bill details</h2>
             <dl className="space-y-2.5 text-[13px]">
               <BillRow label="Items total">
-                {bill.mrpTotal > bill.itemsTotal && <s className="mr-1.5 text-xs font-normal text-[color:var(--theme-muted)]">{formatRupees(bill.mrpTotal)}</s>}
+                {bill.mrpTotal > bill.itemsTotal && <s className="mr-1.5 text-xs font-normal text-[#8A7060]">{formatRupees(bill.mrpTotal)}</s>}
                 <AnimatedRupees value={bill.itemsTotal} />
               </BillRow>
               <BillRow label="Delivery charge">
-                {bill.deliveryFee === 0 ? <span className="font-extrabold text-[color:var(--theme-success)]">FREE</span> : formatRupees(bill.deliveryFee)}
+                {bill.deliveryFee === 0 ? <span className="font-extrabold text-[#2E7D4F]">FREE</span> : formatRupees(bill.deliveryFee)}
               </BillRow>
               <BillRow label="Handling charge">{formatRupees(bill.handlingFee)}</BillRow>
               {bill.smallCartFee > 0 && <BillRow label="Small cart fee">{formatRupees(bill.smallCartFee)}</BillRow>}
               {bill.tip > 0 && (
-                <BillRow label={<span className="flex items-center gap-2">Rider tip <button type="button" onClick={() => setTip(0)} className="text-xs font-semibold text-[color:var(--theme-orange-text)] underline">Remove</button></span>}>
+                <BillRow label={<span className="flex items-center gap-2">Rider tip <button type="button" onClick={() => setTip(0)} className="text-xs font-semibold text-[#A8421A] underline">Remove</button></span>}>
                   {formatRupees(bill.tip)}
                 </BillRow>
               )}
-              {bill.couponCode && bill.discount > 0 && <BillRow label="Coupon discount"><span className="text-[color:var(--theme-success)]">−{formatRupees(bill.discount)}</span></BillRow>}
-              <div className="flex items-baseline justify-between gap-3 border-t border-dashed border-[color:var(--theme-line)] pt-3 text-base font-extrabold">
+              {bill.couponCode && bill.discount > 0 && <BillRow label="Coupon discount"><span className="text-[#2E7D4F]">−{formatRupees(bill.discount)}</span></BillRow>}
+              <div className="flex items-baseline justify-between gap-3 border-t border-dashed border-[#F0E4D2] pt-3 text-base font-extrabold text-[#3A2418]">
                 <dt>Grand total</dt>
                 <dd className="text-lg"><AnimatedRupees value={bill.grandTotal} /></dd>
               </div>
-              <div className="flex items-center justify-between gap-2 rounded-xl bg-[var(--peach-light)] px-3 py-2.5 text-xs font-bold">
+              <div className="flex items-center justify-between gap-2 rounded-xl bg-[#E3F0DA] px-3 py-2.5 text-xs font-bold text-[#2E7D4F]">
                 <dt>Your total savings</dt>
                 <dd><AnimatedRupees value={bill.savings} /></dd>
               </div>
             </dl>
           </section>
 
-          <section aria-labelledby="cart-policy" className="cart-review-card p-[14px] text-xs leading-relaxed text-[color:var(--theme-muted)]">
-            <h2 id="cart-policy" className="font-bold text-[color:var(--theme-ink)]">Cancellation policy</h2>
+          <section aria-labelledby="cart-policy" className="cart-review-card bg-white p-[14px] text-xs leading-relaxed text-[#8A7060]">
+            <h2 id="cart-policy" className="font-bold text-[#3A2418]">Cancellation policy</h2>
             <p>Orders can be cancelled until the store packs them.</p>
           </section>
         </div>
       ) : (
         <div className="cart-screen-entry space-y-4 px-[14px] pt-22 text-center">
           <EmptyCartBasket />
-          <h2 className="text-lg font-extrabold">Your cart is empty</h2>
-          <Link href="/" className="inline-flex min-h-11 items-center justify-center rounded-[14px] border border-[color:var(--theme-line)] bg-[var(--white)] px-5 text-sm font-bold text-[color:var(--theme-orange-text)] hover:bg-[var(--peach-light)]">
+          <h2 className="text-lg font-extrabold text-[#3A2418]">Your cart is empty</h2>
+          <Link href="/" className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#A8421A] px-6 text-sm font-bold text-white hover:bg-[#8E3513]">
             Browse products
           </Link>
         </div>
@@ -251,7 +252,8 @@ export default function CartPage() {
 function CartItems({ items, variants }: { items: CartItem[]; variants: Map<string, ProductVariant> }) {
   const [initial] = useState(() => new Map(items.map(({ variantId }, index) => [variantId, index])));
   return (
-    <section aria-label="Cart items" className="cart-review-card">
+    <section aria-labelledby="market-basket-title" className="cart-review-card">
+      <h2 id="market-basket-title" className="px-[14px] pt-[14px] text-base font-extrabold">Your basket</h2>
       {items.map((item) => {
         const variant = variants.get(item.variantId);
         return <CartRow key={item.variantId} item={item} initialIndex={initial.get(item.variantId)} stock={variant?.stock_available} orderLimit={variant?.max_qty_per_order} />;
@@ -263,8 +265,8 @@ function CartItems({ items, variants }: { items: CartItem[]; variants: Map<strin
 function BillRow({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-[color:var(--theme-muted)]">{label}</dt>
-      <dd className="shrink-0 font-bold tabular-nums">{children}</dd>
+      <dt className="text-[#8A7060]">{label}</dt>
+      <dd className="shrink-0 font-bold text-[#3A2418] tabular-nums">{children}</dd>
     </div>
   );
 }
@@ -278,16 +280,16 @@ function CheckoutBar({ total, hidden, checkingCoupon }: { total: number; hidden:
 
   return (
     <div data-cart-checkout-bar data-empty={hidden ? "" : undefined} aria-hidden={hidden} inert={hidden}
-      className="cart-checkout-bar fixed inset-x-0 bottom-0 z-40 mx-auto flex w-full max-w-[540px] items-center gap-4 rounded-t-[20px] bg-[var(--white)] shadow-[0_-5px_19px_rgba(19,25,59,0.13)]"
+      className="cart-checkout-bar fixed inset-x-0 bottom-0 z-40 mx-auto flex w-full max-w-[540px] items-center gap-4 rounded-t-[20px] border-t border-[#F0E4D2] bg-white shadow-[0_-6px_22px_rgba(58,36,24,0.08)]"
     >
       <div className="min-w-17">
-        <p className="text-xs text-[color:var(--theme-muted)]">Total</p>
-        <p className="text-xl font-black leading-tight"><AnimatedRupees value={total} /></p>
+        <p className="text-xs text-[#8A7060]">Total</p>
+        <p className="text-xl font-black leading-tight text-[#3A2418]"><AnimatedRupees value={total} /></p>
       </div>
       <Link
         href="/checkout"
         aria-disabled={checkingCoupon}
-        className="relative flex h-[52px] min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-[14px] bg-[var(--theme-orange-fill)] px-3 text-[15px] font-bold text-white hover:bg-[var(--theme-orange-hover)] aria-disabled:opacity-60 motion-safe:transition-transform motion-safe:active:scale-[.97]"
+        className="relative flex h-[52px] min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-[14px] bg-[#A8421A] px-3 text-[15px] font-bold text-white hover:bg-[#8E3513] aria-disabled:opacity-60 motion-safe:transition-transform motion-safe:active:scale-[.97]"
         onClick={(event) => {
           shouldDelay.current = false;
           const marker = ripple.current;
@@ -312,7 +314,7 @@ function CheckoutBar({ total, hidden, checkingCoupon }: { total: number; hidden:
           timer.current = window.setTimeout(() => router.push("/checkout"), 110);
         }}
       >
-        Proceed to pay <ChevronRight aria-hidden="true" className="size-5 shrink-0" />
+        Continue to checkout <ChevronRight aria-hidden="true" className="size-5 shrink-0" />
         <span ref={ripple} aria-hidden="true" className="pointer-events-none absolute size-8 rounded-full bg-[var(--white)] opacity-0" />
       </Link>
     </div>

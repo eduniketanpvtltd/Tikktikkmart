@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     await Promise.all([
       db.from("banners").select("*").eq("is_active", true).order("sort_order", { ascending: true }),
       db.from("categories").select("*").eq("is_active", true).order("sort_order", { ascending: true }),
-      activeCatalogProducts(storeId).order("created_at", { ascending: false }).limit(40),
+      activeCatalogProducts(storeId).order("created_at", { ascending: false }).limit(100),
     ]);
 
   if (bErr || cErr || pErr) {

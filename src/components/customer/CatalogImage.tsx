@@ -1,12 +1,12 @@
 "use client";
 
 import { BlurHashPreview, readImagePreview, rememberImagePreview } from "@/components/ui/BlurHashPreview";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function CatalogImage({
   src,
   className = "object-contain",
-  loading = "lazy",
+  loading = "eager",
   blurHash,
 }: {
   src?: string | null;
@@ -14,9 +14,16 @@ export function CatalogImage({
   loading?: "lazy" | "eager";
   blurHash?: string;
 }) {
+  const imgRef = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState<string>();
   const [failed, setFailed] = useState<string>();
   const [cached, setCached] = useState<{ src: string; hash: string }>();
+  useEffect(() => {
+    const img = imgRef.current;
+    if (src && img?.complete && img.naturalWidth > 0) {
+      setLoaded(src);
+    }
+  }, [src]);
   useEffect(() => {
     if (!src || blurHash) return;
     const hash = readImagePreview(src);
@@ -32,6 +39,7 @@ export function CatalogImage({
       {!ready && !preview && <span aria-hidden="true" className={`absolute inset-0 overflow-hidden rounded-[inherit] bg-[var(--theme-skeleton)] ${hasSource ? "catalog-image-loading" : ""}`} />}
       {hasSource && src && (
         <img
+          ref={imgRef}
           key={src}
           src={src}
           alt=""

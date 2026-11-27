@@ -3,10 +3,11 @@
 import { useLayoutEffect, useRef, type PointerEvent, type ReactNode } from "react";
 import { MotionSpring } from "@/lib/ui/spring";
 
-export function SwipeableSheet({ children, onClose, labelledBy }: {
+export function SwipeableSheet({ children, onClose, labelledBy, variant }: {
   children: ReactNode;
   onClose: () => void;
   labelledBy: string;
+  variant?: "rider-offer";
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -63,7 +64,7 @@ export function SwipeableSheet({ children, onClose, labelledBy }: {
   }
 
   return (
-    <dialog ref={dialog} aria-labelledby={labelledBy} className="interaction-dialog"
+    <dialog ref={dialog} aria-labelledby={labelledBy} className="interaction-dialog" data-variant={variant}
       onCancel={(event) => { event.preventDefault(); dismiss(); }}
       onClick={(event) => { if (event.target === event.currentTarget) dismiss(); }}>
       <div className="interaction-sheet" ref={panel}>

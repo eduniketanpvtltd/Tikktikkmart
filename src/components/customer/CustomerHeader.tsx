@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   MapPin, Search, User, ChevronDown, X, Compass, ShoppingCart, CookingPot, CupSoda,
-  Grid2X2, Milk, Popcorn, Sandwich, Carrot, Sparkles, Mic, MicOff,
+  Grid2X2, Milk, Popcorn, Sandwich, Carrot, Sparkles, Mic, MicOff, Zap,
 } from "lucide-react";
 import { rememberCartOrigin } from "@/lib/cartEntry";
 import { apiFetch } from "@/lib/api/client";
@@ -20,7 +20,7 @@ import { AccountAvatar } from "@/components/customer/AccountAvatar";
 import { browseDepartments, featuredHref } from "@/lib/catalog/browse";
 import type { Address } from "@/types/db";
 
-const suggestions = ["atta, dal, coke and more", "milk, bread and eggs", "chips and snacks", "fruits and vegetables"];
+const suggestions = ["milk, fruit, bread…", "fresh vegetables", "chips and snacks", "atta, dal and rice"];
 const shortcuts = ["Home", "Office", "Other"] as const;
 type Shortcut = typeof shortcuts[number];
 
@@ -51,57 +51,53 @@ function addressShortcut(label: string | null): Shortcut {
 }
 
 function HeaderSearchSuggestion({ pathname, scopeLabel, paused }: { pathname: string; scopeLabel?: string; paused: boolean }) {
-  const [suggestion, setSuggestion] = useState(suggestions[0]);
+  const [index, setIndex] = useState(0);
   useEffect(() => {
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let timer: number;
-    let index = 0;
-    let length = suggestions[0].length;
-    let deleting = true;
 
-    const tick = () => {
-      const current = suggestions[index];
-      length += deleting ? -1 : 1;
-      setSuggestion(current.slice(0, length));
-      let delay = deleting ? 32 : 63;
-      if (deleting && length === 0) {
-        index = (index + 1) % suggestions.length;
-        deleting = false;
-        delay = 240;
-      } else if (!deleting && length === current.length) {
-        deleting = true;
-        delay = 1700;
-      }
-      timer = window.setTimeout(tick, delay);
+    const scheduleNext = () => {
+      timer = window.setTimeout(() => {
+        if (!document.querySelector('.ttm-splash[data-phase="intro"]')) {
+          setIndex((current) => (current + 1) % suggestions.length);
+        }
+        scheduleNext();
+      }, 2600);
     };
 
     const reset = () => {
       window.clearTimeout(timer);
-      index = 0;
-      length = suggestions[0].length;
-      deleting = true;
-      setSuggestion(suggestions[0]);
-      if (!paused && !scopeLabel && !motion.matches) timer = window.setTimeout(tick, 1700);
+      setIndex(0);
+      if (!paused && !scopeLabel && !motion.matches && !document.hidden) {
+        scheduleNext();
+      }
     };
 
     reset();
     motion.addEventListener("change", reset);
+    document.addEventListener("visibilitychange", reset);
     return () => {
       window.clearTimeout(timer);
       motion.removeEventListener("change", reset);
+      document.removeEventListener("visibilitychange", reset);
     };
   }, [pathname, paused, scopeLabel]);
 
-  return <span>{scopeLabel ? `Search in ${scopeLabel}` : `Search for ${paused ? suggestions[0] : suggestion}`}</span>;
+  if (scopeLabel) return <span>Search in {scopeLabel}</span>;
+  const current = paused ? suggestions[0] : suggestions[index];
+  return <span className="customer-search-prompt">Search <strong key={current}>{current}</strong></span>;
 }
 
 export function CustomerHeader({ showSearch = true }: { showSearch?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
+  const home = pathname === "/";
+  const marketHeader = true;
   const department = browseDepartments.find(({ slug }) => pathname === `/category/${slug}`);
   const searchScope = pathname === featuredHref ? { id: "featured", label: "Featured" } :
     department ? { id: department.slug, label: department.label } : undefined;
   const { items, location, etaMinutes, serviceable, setServiceability } = useCartStore();
+  const deliveryEta = serviceable && etaMinutes != null && etaMinutes > 0 ? etaMinutes : null;
   const { user } = useAuth();
   const [stripOpen, setStripOpen] = useState(false);
   const [picker, setPicker] = useState<Shortcut>();
@@ -111,6 +107,7 @@ export function CustomerHeader({ showSearch = true }: { showSearch?: boolean }) 
   const [featuredSelected, setFeaturedSelected] = useState(false);
   const [listening, setListening] = useState(false);
   const locationButton = useRef<HTMLButtonElement>(null);
+  const deliveryWrap = useRef<HTMLDivElement>(null);
   const speech = useRef<VoiceRecognition>(null);
   const tabScroller = useRef<HTMLElement>(null);
   const tabTrack = useRef<HTMLDivElement>(null);
@@ -128,16 +125,17 @@ export function CustomerHeader({ showSearch = true }: { showSearch?: boolean }) 
   });
 
   useEffect(() => {
-    if (pathname === "/cart" || pathname === "/search" || pathname.startsWith("/product/") || pathname.startsWith("/orders/")) return;
+    if (pathname === "/cart" || pathname === "/checkout" || pathname === "/search" || pathname.startsWith("/product/") || pathname.startsWith("/orders/")) return;
     let shadow = window.scrollY > 6;
-    let collapsed = window.scrollY > 70;
+    const deliveryHeight = deliveryWrap.current?.offsetHeight ?? 62;
+    let collapsed = window.scrollY > deliveryHeight + 8;
     setScrolled(shadow);
     setCompact(collapsed);
     const update = () => {
       const y = window.scrollY;
       const nextShadow = y > 6;
       // Separate thresholds prevent repeatedly toggling while a swipe settles.
-      const nextCollapsed = collapsed ? y >= 54 : y > 70;
+      const nextCollapsed = collapsed ? y >= deliveryHeight - 8 : y > deliveryHeight + 8;
       if (nextShadow !== shadow) setScrolled(shadow = nextShadow);
       if (nextCollapsed !== collapsed) setCompact(collapsed = nextCollapsed);
     };
@@ -290,11 +288,12 @@ export function CustomerHeader({ showSearch = true }: { showSearch?: boolean }) 
     scroller.scrollTo({ left, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   }
 
-  if (pathname === "/cart" || pathname === "/search" || pathname.startsWith("/product/") || pathname.startsWith("/orders/")) return null;
+  if (pathname === "/cart" || pathname === "/checkout" || pathname === "/search" || pathname.startsWith("/product/") || pathname.startsWith("/orders/")) return null;
 
   return (
     <>
       <header className="customer-header-theme customer-store-header sticky z-40"
+        data-market-header={marketHeader ? "" : undefined} data-market-masthead={home ? "" : undefined}
         data-shadow={scrolled ? "" : undefined} data-compact={compact ? "" : undefined}
         onKeyDown={(event) => {
           if (event.key === "Escape" && stripVisible) {
@@ -304,29 +303,38 @@ export function CustomerHeader({ showSearch = true }: { showSearch?: boolean }) 
         }}
       >
         <div className="customer-header-content mx-auto max-w-5xl">
-          <div className="customer-delivery-wrap" inert={compact}>
+          <div ref={deliveryWrap} className="customer-delivery-wrap" inert={compact}>
             <div className="customer-delivery-row">
               <Link href="/" aria-label="Tikk Tikk Mart home" className="customer-logo-link">
                 <span className="customer-logo-tile media-frame">
                   <img src="/logo.png" alt="" width={38} height={38} className="media-content media-content--contain" />
                 </span>
+                {home && <span className="market-wordmark" aria-hidden="true">Tikk Tikk <span>Mart</span></span>}
               </Link>
 
               <button ref={locationButton} type="button" onClick={() => setStripOpen(!stripOpen)}
                 aria-expanded={stripVisible} aria-controls="customer-address-strip" className="customer-delivery-location"
               >
-                <span className="customer-delivery-top">
-                  <span className="customer-delivery-prefix">{serviceable ? "Delivery in" : "Delivery location"}</span>
-                  {serviceable && (
-                    <span className="customer-eta">
-                      <span aria-hidden="true" className="customer-eta-dot" />
-                      <span key={etaMinutes ?? 10} className="customer-eta-update">{etaMinutes ?? 10} min</span>
-                    </span>
-                  )}
-                </span>
+                {(!home || deliveryEta != null) && (
+                  <span className="customer-delivery-top">
+                    {!home && <span className="customer-delivery-prefix">{deliveryEta != null ? "Delivery in" : "Delivery location"}</span>}
+                    {deliveryEta != null && (
+                      <span className="customer-eta">
+                        {marketHeader
+                          ? <Zap aria-hidden="true" size={12} strokeWidth={2.35} />
+                          : <span aria-hidden="true" className="customer-eta-dot" />}
+                        {home && <span className="sr-only">Delivery in </span>}
+                        <span key={deliveryEta} className="customer-eta-update">{deliveryEta} min</span>
+                      </span>
+                    )}
+                  </span>
+                )}
                 <span className="customer-delivery-address">
-                  <MapPin aria-hidden="true" size={14} />
-                  <span>{location?.address || "Choose your address"}</span>
+                  <MapPin aria-hidden="true" size={16} />
+                  <span className="customer-address-text">
+                    {home && <span className="market-address-label">Deliver to</span>}
+                    <span>{location?.address || "Choose your address"}</span>
+                  </span>
                   <ChevronDown aria-hidden="true" size={14} className="customer-address-chevron" data-open={stripVisible ? "" : undefined} />
                 </span>
               </button>
@@ -343,7 +351,7 @@ export function CustomerHeader({ showSearch = true }: { showSearch?: boolean }) 
                 <AccountAvatar
                   src={user?.photo_url}
                   className="customer-header-avatar rounded-full"
-                  fallback={<User aria-hidden="true" size={22} />}
+                  fallback={<User aria-hidden="true" size={20} strokeWidth={1.8} />}
                 />
               </Link>
 
@@ -387,7 +395,7 @@ export function CustomerHeader({ showSearch = true }: { showSearch?: boolean }) 
             </div>
           </div>
 
-          <nav ref={tabScroller} aria-label="Browse grocery departments" className="customer-tab-scroller">
+          {!home && <nav ref={tabScroller} aria-label="Browse grocery departments" className="customer-tab-scroller">
             <div ref={tabTrack} className="customer-tab-track">
               {categories.map(({ label, href, icon: Icon, featured }) => {
                 const active = (pathname === href && !(href === "/" && featuredSelected))
@@ -404,7 +412,7 @@ export function CustomerHeader({ showSearch = true }: { showSearch?: boolean }) 
                     <span className="customer-tab-slot">
                       <span className="customer-tab-tile">
                         <Icon aria-hidden="true" size={22} />
-                        {featured && <span aria-hidden="true" className="customer-tab-new">New</span>}
+                        {featured && !home && <span aria-hidden="true" className="customer-tab-new">New</span>}
                       </span>
                     </span>
                     <span className="customer-tab-label">{label}</span>
@@ -413,7 +421,7 @@ export function CustomerHeader({ showSearch = true }: { showSearch?: boolean }) 
               })}
               <span ref={tabIndicator} aria-hidden="true" className="customer-tab-indicator" />
             </div>
-          </nav>
+          </nav>}
         </div>
       </header>
 

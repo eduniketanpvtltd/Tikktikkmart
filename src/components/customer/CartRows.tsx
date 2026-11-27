@@ -121,7 +121,7 @@ export function CartRow({
       </span>
       <div
         ref={content}
-        className="cart-row-content grid touch-pan-y grid-cols-[58px_minmax(0,1fr)_auto] items-center gap-3 border-b border-[color:var(--theme-line)] bg-[var(--white)] px-[14px] py-3"
+        className="cart-row-content relative grid touch-pan-y grid-cols-[58px_minmax(0,1fr)_auto] items-center gap-3 border-b border-[color:var(--theme-line)] bg-[var(--white)] px-[14px] py-3"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={finishPointer}

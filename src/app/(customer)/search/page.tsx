@@ -39,6 +39,7 @@ function SearchResults() {
   const params = useSearchParams();
   const initial = params.get("q") ?? "";
   const scope = params.get("scope");
+  const showCatalogue = params.get("all") === "1";
   const department = browseDepartments.find(({ slug }) => slug === scope);
   const isFeatured = scope === "featured";
   const scopeLabel = isFeatured ? "Featured" : department?.label;
@@ -127,6 +128,7 @@ function SearchResults() {
     const next = new URLSearchParams();
     if (term) next.set("q", term);
     if (scopeLabel && scope) next.set("scope", scope);
+    if (showCatalogue) next.set("all", "1");
     return next.size ? `/search?${next}` : "/search";
   }
 
@@ -165,7 +167,7 @@ function SearchResults() {
           </Link>
           <form role="search" className="search-page-field" onSubmit={submit}>
             <button className="search-page-submit" type="submit" aria-label="Submit search"><Search size={18} aria-hidden="true" /></button>
-            <input ref={field} type="search" autoFocus autoComplete="off" enterKeyHint="search" maxLength={120}
+            <input ref={field} type="search" autoFocus={!showCatalogue} autoComplete="off" enterKeyHint="search" maxLength={120}
               aria-label={scopeLabel ? `Search in ${scopeLabel}` : "Search products"}
               placeholder={scopeLabel ? `Search in ${scopeLabel}` : "Search for milk, chips, coke"}
               value={input} onChange={(event) => {
@@ -179,7 +181,19 @@ function SearchResults() {
       </header>
 
       <div className="search-page-content">
-        {!query ? (
+        {!query && showCatalogue ? (
+          <section aria-labelledby="search-all-title">
+            <div className="search-section-heading"><h2 id="search-all-title" className="search-grid-title">All products</h2></div>
+            {home.isLoading ? <LayoutSkeleton shape="products" label="Loading products" /> : home.isError && !home.data ? (
+              <div className="search-empty" role="status">
+                <p>The catalogue couldn’t load.</p>
+                <button type="button" onClick={() => void home.refetch()}>Try again</button>
+              </div>
+            ) : home.data?.products.some((product) => product.variants?.length) ? (
+              <SearchProductGrid products={home.data.products.filter((product) => product.variants?.length)} />
+            ) : <p className="market-empty">No products are available right now.</p>}
+          </section>
+        ) : !query ? (
           <>
             {!!recent.length && <section aria-labelledby="search-recent-title">
               <div className="search-section-heading">

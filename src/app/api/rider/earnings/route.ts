@@ -48,6 +48,7 @@ export const GET = withAuth(["rider", "admin"], async (req, { user }) => {
     todayTrips: today.length,
     todayEarned: dailyEarnings.at(-1) ?? 0,
     todayDrops: today,
+    recentDrops: drops,
     dailyEarnings,
     codBalance: Number(profile?.cod_balance ?? 0),
   };

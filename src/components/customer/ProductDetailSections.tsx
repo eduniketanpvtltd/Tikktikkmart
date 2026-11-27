@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { CatalogImage } from "@/components/customer/CatalogImage";
 import { formatRupees } from "@/components/customer/AnimatedRupees";
-import { getCardImage } from "@/components/customer/ProductCard";
+import { getCardImage, isIllustrativeCatalogImage } from "@/components/customer/ProductCard";
 import { flyToCart } from "@/lib/catalog/flyToCart";
 import { useOpenProduct } from "@/lib/catalog/productMotion";
 import { useCartStore } from "@/stores/cartStore";
@@ -62,6 +62,7 @@ export function ProductGallery({ product, discount }: { product: Product; discou
           </div>
         ))}
       </div>
+      {isIllustrativeCatalogImage(sources[0]) && <p className="text-center text-xs text-[color:var(--theme-muted)]">Illustrative product photo</p>}
       {Boolean(sources[0]) && (
         <div ref={dots} className="product-gallery-dots" aria-hidden="true">
           {sources.map((source) => <span key={source} />)}

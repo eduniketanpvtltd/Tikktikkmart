@@ -5,6 +5,7 @@ import { CustomerHeader } from "@/components/customer/CustomerHeader";
 import { FloatingCartBar } from "@/components/customer/FloatingCartBar";
 import { MobileNav } from "@/components/customer/MobileNav";
 import "./browse.css";
+import "./market.css";
 
 export const viewport: Viewport = { viewportFit: "cover" };
 

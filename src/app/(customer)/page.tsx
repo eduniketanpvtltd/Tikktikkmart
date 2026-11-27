@@ -1,322 +1,335 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight } from "lucide-react";
+import { ArrowUpRight, ChevronRight, Copy } from "lucide-react";
 import { CatalogImage } from "@/components/customer/CatalogImage";
-import { CollectionTiles, FrequentlyBought } from "@/components/customer/HomeCollections";
-import { getCardImage, ProductCard } from "@/components/customer/ProductCard";
-import { FeaturedCarousel } from "@/components/customer/FeaturedCarousel";
+import { BrowseProductCard } from "@/components/customer/BrowseView";
 import { showCustomerToast } from "@/components/customer/CustomerFeedback";
 import { StorefrontRefresh } from "@/components/customer/StorefrontRefresh";
-import { pressTilt, useOpenProduct } from "@/lib/catalog/productMotion";
-import { fetchBrowseCatalog } from "@/lib/catalog/browse";
 import { StorefrontBackToTop } from "@/components/customer/StorefrontBackToTop";
-import { StorefrontPromotions } from "@/components/customer/StorefrontPromotions";
+import { browseDiscount, fetchBrowseCatalog } from "@/lib/catalog/browse";
 import { useCartStore } from "@/stores/cartStore";
 import { useWishlistStore } from "@/stores/wishlistStore";
-import type { Category, Product } from "@/types/db";
+import type { Category } from "@/types/db";
 
-const quickShopSlugs = ["dairy-bread-eggs", "vegetables-fruits", "munchies-snacks"];
+const essentialSlugs = [
+  "fresh-red-onions", "farm-fresh-white-eggs", "cavendish-banana",
+  "fresh-jyoti-potato", "amul-taaza-milk", "brown-sandwich-bread",
+  "fresh-hybrid-tomato", "oreo-original-cookies", "aashirvaad-shudh-chakki-atta",
+];
+const essentialPriority = new Map(essentialSlugs.map((slug, index) => [slug, index]));
+const aisleLabels: Record<string, string> = {
+  "vegetables-fruits": "Fresh produce",
+  "dairy-bread-eggs": "Dairy & eggs",
+  "munchies-snacks": "Packaged food",
+  "cold-drinks-juices": "Cold drinks",
+  "atta-rice-dal": "Staples & rice",
+  "instant-frozen": "Instant & frozen",
+};
+const aisleTints = ["#E3F0DA", "#FFF0DA", "#FDE3D6", "#E3EEFF", "#F3EBD6", "#F7DCE0"];
+const aisleImages: Record<string, string> = {
+  "vegetables-fruits": "/storefront/tomatoes.webp",
+  "dairy-bread-eggs": "/storefront/eggs.webp",
+  "munchies-snacks": "/storefront/oreo.jpg",
+  "cold-drinks-juices": "/storefront/red-bull.webp",
+  "atta-rice-dal": "/storefront/essentials/fresh-jyoti-potato.jpg",
+  "instant-frozen": "/storefront/essentials/brown-sandwich-bread.jpg",
+};
 
-const snackSlugs = new Set(["munchies-snacks", "cold-drinks-juices"]);
+const heroSlides = [
+  {
+    eyebrow: "RIGHT NOW",
+    headline: "The morning shop",
+    subtitle: "Milk, eggs, bread and fruit.",
+    cta: "Shop essentials",
+    href: "#essentials",
+    image: "/storefront/fresh-shop.webp",
+    bg: "linear-gradient(135deg, #FFE7C2, #FFD0A0)",
+    eyebrowColor: "#8A5A3A",
+    ctaBg: "#A8421A",
+    textColor: "#3A2418",
+  },
+  {
+    eyebrow: "SNACK O'CLOCK",
+    headline: "Chips & biscuits",
+    subtitle: "For the tea break.",
+    cta: "Shop snacks",
+    href: "/category/munchies-snacks",
+    image: "/storefront/oreo.jpg",
+    bg: "linear-gradient(135deg, #FFE0D6, #FFC4B0)",
+    eyebrowColor: "#9A4A3A",
+    ctaBg: "#A8421A",
+    textColor: "#3A2418",
+  },
+  {
+    eyebrow: "COLD TREATS",
+    headline: "Cold drinks",
+    subtitle: "Juices, sodas and energy drinks.",
+    cta: "Shop drinks",
+    href: "/category/cold-drinks-juices",
+    image: "/storefront/red-bull.webp",
+    bg: "linear-gradient(135deg, #E3EEFF, #C7DCFA)",
+    eyebrowColor: "#4A6288",
+    ctaBg: "#3F6FB5",
+    textColor: "#2B3A55",
+  },
+];
 
 export default function CustomerHomePage() {
   const storefront = useRef<HTMLDivElement>(null);
-  const openProduct = useOpenProduct();
-
-  useEffect(() => {
-    const page = storefront.current;
-    const surface = page?.closest<HTMLElement>("[data-customer-app]");
-    const end = page?.querySelector<HTMLElement>("[data-theme-gradient-end]");
-    if (!page || !surface || !end) return;
-
-    const measure = () => {
-      const height = Math.round(end.getBoundingClientRect().top - surface.getBoundingClientRect().top);
-      if (height > 0) surface.style.setProperty("--theme-gradient-end", `${height}px`);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(page);
-    const header = surface.querySelector(".customer-store-header");
-    if (header) observer.observe(header);
-    return () => {
-      observer.disconnect();
-      surface.style.removeProperty("--theme-gradient-end");
-    };
-  }, []);
-
   const storeId = useCartStore((state) => state.storeId);
   const serviceable = useCartStore((state) => state.serviceable);
   const setServiceability = useCartStore((state) => state.setServiceability);
-  const { productIds, toggleProduct } = useWishlistStore();
+  const savedIds = useWishlistStore((state) => state.productIds);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [spotlightSlug, setSpotlightSlug] = useState("vegetables-fruits");
+  const resumeAfter = useRef(0);
+  const swipeStartX = useRef<number | null>(null);
 
-  // On first visit, auto-detect location or default to Kolkata pilot store coordinates
   useEffect(() => {
-    const initial = useCartStore.getState();
-    if (initial.serviceable === null && !initial.location) {
-      fetch("/api/serviceability?lat=22.5726&lng=88.3639")
-        .then((r) => r.json())
-        .then((json) => {
-          const current = useCartStore.getState();
-          if (current.serviceable === null && !current.location && json?.ok && json.data?.serviceable) {
-            setServiceability({
-              location: { lat: 22.5726, lng: 88.3639, address: "Park Street, Kolkata" },
-              serviceable: true,
-              storeId: json.data.storeId,
-              storeName: json.data.storeName,
-              etaMinutes: json.data.etaMinutes,
-            });
-          }
-        })
-        .catch(() => {});
-    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => {
+      if (document.hidden || Date.now() < resumeAfter.current ||
+          storefront.current?.querySelector(".market-carousel-wrap:focus-within") ||
+          (storefront.current?.querySelector(".market-carousel-wrap")?.getBoundingClientRect().bottom ?? 0) <= 0) return;
+      setHeroIndex((current) => (current + 1) % heroSlides.length);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (serviceable !== null || useCartStore.getState().location) return;
+    const request = new AbortController();
+    fetch("/api/serviceability?lat=22.5726&lng=88.3639", { signal: request.signal })
+      .then((response) => response.json())
+      .then(({ ok, data }) => {
+        const current = useCartStore.getState();
+        if (!ok || !data?.serviceable || current.serviceable !== null || current.location) return;
+        setServiceability({
+          location: { lat: 22.5726, lng: 88.3639, address: "Park Street, Kolkata" },
+          serviceable: true,
+          storeId: data.storeId,
+          storeName: data.storeName,
+          etaMinutes: data.etaMinutes,
+        });
+      })
+      .catch(() => {});
+    return () => request.abort();
   }, [serviceable, setServiceability]);
 
-  const { data, isLoading, isError: loadFailed, refetch } = useQuery({
+  const catalog = useQuery({
     queryKey: ["home", storeId],
     queryFn: ({ signal }) => fetchBrowseCatalog(storeId, signal),
+    // Keep the first catalogue visible while the initial delivery store resolves.
+    placeholderData: (previous, previousQuery) => previousQuery?.queryKey[1] == null ? previous : undefined,
   });
-  const isError = loadFailed && !data;
+  const categories = catalog.data?.categories ?? [];
+  const products = (catalog.data?.products ?? []).filter((product) => product.variants?.length);
+  const available = products.filter((product) => (product.variants?.[0]?.stock_available ?? 1) > 0);
+  const essentials = [...available].sort((a, b) => {
+    return (essentialPriority.get(a.slug) ?? essentialSlugs.length) - (essentialPriority.get(b.slug) ?? essentialSlugs.length);
+  }).slice(0, 9);
+  const essentialIds = new Set(essentials.map(({ id }) => id));
+  const deals = available.filter((product) => browseDiscount(product) > 0 && !essentialIds.has(product.id))
+    .sort((a, b) => browseDiscount(b) - browseDiscount(a)).slice(0, 9);
+  const saved = products.filter(({ id }) => savedIds.includes(id));
+
+  const categoryById = new Map(categories.map((cat) => [cat.id, cat.slug]));
+  const slugOf = (categoryId: string | null) => (categoryId ? categoryById.get(categoryId) : undefined);
+  const spotlightTabs = [
+    { slug: "vegetables-fruits", label: "Fresh Produce" },
+    { slug: "dairy-bread-eggs", label: "Dairy & Eggs" },
+    { slug: "munchies-snacks", label: "Snacks" },
+    { slug: "cold-drinks-juices", label: "Cold Drinks" },
+  ];
+  const spotlightProducts = available
+    .filter((product) => slugOf(product.category_id) === spotlightSlug)
+    .slice(0, 3);
 
   useEffect(() => {
     const root = storefront.current;
-    if (!root || !("IntersectionObserver" in window) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!root || !("IntersectionObserver" in window)) return;
 
-    root.querySelectorAll("[data-storefront-stagger]").forEach((row) => {
-      Array.from(row.children).forEach((tile, index) => {
-        (tile as HTMLElement).style.setProperty("--tile-order", String(index));
-      });
-    });
-
-    const sections = [...root.querySelectorAll<HTMLElement>("[data-storefront-reveal]:not([data-storefront-revealed])")];
+    const campaign = root.querySelector<HTMLElement>(".market-hero");
+    const watching = root.querySelectorAll<HTMLElement>("[data-market-reveal]:not([data-market-revealed])");
     const observer = new IntersectionObserver((entries) => {
       for (const { target, isIntersecting } of entries) {
-        if (!isIntersecting) continue;
-        const section = target as HTMLElement;
-        section.dataset.storefrontRevealed = "";
-        delete section.dataset.storefrontPending;
-        observer.unobserve(section);
+        if (!(target instanceof HTMLElement)) continue;
+
+        if (target === campaign) {
+          target.toggleAttribute("data-hero-visible", isIntersecting);
+        } else if (isIntersecting) {
+          target.dataset.marketRevealed = "";
+          observer.unobserve(target);
+        }
       }
     }, { threshold: 0.12 });
 
-    for (const section of sections) {
-      section.dataset.storefrontPending = "";
-      observer.observe(section);
-    }
-
-    return () => {
-      observer.disconnect();
-      sections.forEach((section) => delete section.dataset.storefrontPending);
-    };
-  }, [data, productIds.length]);
-
-  const categories = data?.categories ?? [];
-  const products = data?.products ?? [];
-  const departments = [
-    { title: "Grocery & Kitchen", categories: categories.filter((category) => !snackSlugs.has(category.slug)) },
-    { title: "Snacks & Drinks", categories: categories.filter((category) => snackSlugs.has(category.slug)) },
-  ].filter((department) => department.categories.length > 0);
-  const shelves = categories
-    .map((category) => ({
-      category,
-      products: products.filter((product) => product.category_id === category.id && product.variants?.length),
-    }))
-    .filter((shelf) => shelf.products.length > 0);
-
-  const quickShop = quickShopSlugs.flatMap((slug) => shelves.filter(({ category }) => category.slug === slug));
-  const featured = shelves.flatMap(({ category, products }) =>
-    products.filter((product) => (product.variants?.[0]?.stock_available ?? 1) > 0 && getCardImage(product))
-      .slice(0, 1).map((product) => ({ category, product })),
-  );
-  const sparse = shelves.filter(({ products }) => products.length < 3).map(({ category }) => category);
-  const sparseCategories = sparse.length
-    ? [...sparse, ...categories.filter((category) => !sparse.some(({ id }) => category.id === id))].slice(0, 4)
-    : [];
-  const savedProducts = products.filter((product) => product.variants?.length && productIds.includes(product.id));
-
-  const renderCard = (product: Product) => (
-    <ProductCard
-      key={product.id}
-      product={product}
-      compact
-      saved={productIds.includes(product.id)}
-      onToggleSaved={() => {
-        const wasSaved = useWishlistStore.getState().productIds.includes(product.id);
-        toggleProduct(product.id);
-        showCustomerToast(wasSaved ? "Removed from wishlist" : "Added to wishlist");
-      }}
-    />
-  );
+    if (campaign) observer.observe(campaign);
+    watching.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, [catalog.data, savedIds.length]);
 
   return (
-    <div ref={storefront} data-pull-refresh className="space-y-5 sm:space-y-7">
-      <StorefrontRefresh storefront={storefront} refresh={refetch} />
-      <div className="storefront-promo-section">
-        <StorefrontPromotions />
-        <div className="storefront-promo-followup mx-auto max-w-5xl px-3 sm:px-4">
-          {isLoading ? <HomeShelfPlaceholder /> : <FrequentlyBought aisles={quickShop} />}
+    <div ref={storefront} data-pull-refresh className="market-home">
+      <StorefrontRefresh storefront={storefront} refresh={catalog.refetch} />
+      <section
+        className="market-carousel-wrap"
+        aria-roledescription="carousel"
+        aria-label="Featured promotions"
+        onPointerDown={(event) => {
+          resumeAfter.current = Date.now() + 6000;
+          swipeStartX.current = event.clientX;
+        }}
+        onPointerUp={(event) => {
+          if (swipeStartX.current == null) return;
+          const delta = event.clientX - swipeStartX.current;
+          swipeStartX.current = null;
+          if (Math.abs(delta) > 30) {
+            setHeroIndex((current) => (current + (delta < 0 ? 1 : -1) + heroSlides.length) % heroSlides.length);
+          }
+        }}
+      >
+        <div className="market-carousel-track" style={{ transform: `translateX(-${heroIndex * 100}%)` }}>
+          {heroSlides.map((slide, index) => (
+            <div
+              key={slide.eyebrow}
+              className="market-slide"
+              data-active={index === heroIndex ? "" : undefined}
+              inert={index !== heroIndex}
+              style={{ background: slide.bg, color: slide.textColor }}
+            >
+              <div className="market-slide-visual" aria-hidden="true">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={slide.image} alt="" fetchPriority={index === 0 ? "high" : undefined} />
+              </div>
+              <h1 id={index === 0 ? "market-promo" : undefined}>{slide.headline}</h1>
+              <p className="market-slide-sub">{slide.subtitle}</p>
+              <Link href={slide.href} className="market-slide-cta" style={{ background: slide.ctaBg }}>
+                {slide.cta}
+              </Link>
+            </div>
+          ))}
         </div>
-      </div>
+        <div className="market-carousel-dots" role="tablist" aria-label="Slide controls">
+          {heroSlides.map((slide, index) => (
+            <button
+              key={slide.eyebrow}
+              type="button"
+              role="tab"
+              aria-selected={index === heroIndex}
+              aria-label={`Slide ${index + 1}: ${slide.eyebrow}`}
+              className={index === heroIndex ? "is-active" : undefined}
+              onClick={() => setHeroIndex(index)}
+            />
+          ))}
+        </div>
+      </section>
 
-      {serviceable === false && (
-        <p role="status" className="rounded-xl border border-[color:var(--theme-warning)] bg-[var(--theme-warning-bg)] px-4 py-3 text-sm text-[color:var(--theme-warning)]">
-          Delivery is unavailable at this address. Select another location above.
-        </p>
-      )}
+      {serviceable === false && <p role="status" className="market-service-status">Delivery is unavailable here. Choose another address above.</p>}
 
-      <div id="featured" className="scroll-mt-48 lg:scroll-mt-36">
-        {isLoading ? <HomeShelfPlaceholder featured /> : featured.length > 0 && (
-          <section data-storefront-reveal aria-labelledby="featured-title" className="space-y-2">
-            <h2 id="featured-title" className="text-lg font-extrabold tracking-tight text-[color:var(--theme-ink)] sm:text-xl">Featured this week</h2>
-            <FeaturedCarousel>
-              {featured.map(({ category, product }) => (
-                <Link
-                  key={product.id}
-                  href={`/product/${product.slug}`}
-                  {...pressTilt}
-                  onNavigate={(event) => {
-                    event.preventDefault();
-                    const source = storefront.current?.querySelector<HTMLElement>(`[data-feature-image="${CSS.escape(product.slug)}"]`) ?? null;
-                    openProduct(product, source);
-                  }}
-                  className="press-tilt relative flex w-[44%] shrink-0 snap-start flex-col overflow-hidden rounded-2xl border-2 border-[color:var(--border-orange)] bg-[var(--peach-light)] p-2.5 text-center sm:w-[24%]"
-                >
-                  <span className="absolute left-1/2 top-0 max-w-[95%] -translate-x-1/2 truncate rounded-b-lg bg-[var(--navy)] px-2 py-1 text-[10px] font-bold text-white">{category.name}</span>
-                  <span className="mt-6 line-clamp-2 min-h-9 text-sm font-bold leading-[18px] text-[color:var(--theme-ink)]">{product.name}</span>
-                  <div data-storefront-tile data-feature-image={product.slug} data-card-image={product.slug} className="relative mt-2 grid aspect-[5/4] place-items-center overflow-hidden rounded-xl bg-[var(--white)]">
-                    <CatalogImage src={getCardImage(product)} className="object-contain p-1" />
-                  </div>
-                </Link>
-              ))}
-            </FeaturedCarousel>
-          </section>
-        )}
-      </div>
-
-      <section id="categories" data-theme-gradient-end aria-labelledby="category-title" className="scroll-mt-48 lg:scroll-mt-36 space-y-5 sm:space-y-6">
-        <h1 id="category-title" className="sr-only">All grocery departments</h1>
-        {isLoading ? (
-          <div role="status" aria-label="Loading categories" className="grid grid-cols-4 gap-2">
-            {Array.from({ length: 6 }, (_, index) => (
-              <div key={index} className="storefront-skeleton relative h-24 overflow-hidden rounded-xl bg-[var(--theme-skeleton)] sm:h-32" />
-            ))}
-          </div>
-        ) : isError ? (
-          <div className="rounded-xl border border-[color:var(--theme-line)] bg-[var(--white)] p-4 text-sm">
-            <p role="status">The catalog couldn’t load.</p>
-            <button type="button" onClick={() => void refetch()} className="mt-1 min-h-11 font-bold text-[color:var(--theme-orange-text)]">
-              Try again
-            </button>
-          </div>
-        ) : categories.length === 0 ? (
-          <p className="text-sm text-[color:var(--theme-muted)]">No categories are available right now.</p>
-        ) : (
-          <div className="space-y-5 lg:grid lg:grid-cols-[2fr_1fr] lg:gap-6 lg:space-y-0">
-            {departments.map((department) => (
-              <section data-storefront-reveal key={department.title} className="space-y-2.5">
-                <h2 className="text-lg font-extrabold leading-tight tracking-tight text-[color:var(--theme-ink)] sm:text-xl">{department.title}</h2>
-                <div data-storefront-stagger className="grid grid-cols-4 gap-2.5">
-                  {department.categories.map((category) => (
-                    <CategoryTile key={category.id} category={category} />
-                  ))}
-                </div>
-              </section>
-            ))}
+      <section id="categories" data-market-reveal className="market-section" aria-labelledby="market-category-title">
+        <div className="market-section-heading">
+          <h2 id="market-category-title">Aisles</h2>
+          <Link href="/search?all=1">See all <ArrowUpRight size={14} aria-hidden="true" /></Link>
+        </div>
+        {categories.length > 0 && (
+          <div className="market-category-grid">
+            {categories.map((category, index) => <CategoryTile key={category.id} category={category} index={index} />)}
           </div>
         )}
       </section>
 
-      {!isLoading && !isError && products.length > 0 && (
-        <section data-storefront-reveal aria-labelledby="wishlist-title" className="space-y-2">
-          <h2 id="wishlist-title" className="text-lg font-extrabold tracking-tight text-[color:var(--theme-ink)] sm:text-xl">Your wishlist</h2>
-          {savedProducts.length ? (
-            <div data-storefront-stagger className="storefront-row">{savedProducts.map(renderCard)}</div>
-          ) : (
-            <p className="rounded-xl border border-[color:var(--theme-line)] bg-[var(--peach-light)] px-4 py-3 text-sm text-[color:var(--theme-muted)]">Tap a heart to save a product here.</p>
-          )}
-        </section>
-      )}
-
-      <CollectionTiles aisles={shelves} kind="spotlight" />
-      <CollectionTiles aisles={shelves} kind="lifestyle" />
-
-      {sparseCategories.length > 0 && (
-        <section data-storefront-reveal aria-labelledby="more-categories-title" className="space-y-2.5">
-          <h2 id="more-categories-title" className="text-lg font-extrabold tracking-tight text-[color:var(--theme-ink)] sm:text-xl">Browse more categories</h2>
-          <div data-storefront-stagger className="grid grid-cols-4 gap-2.5">
-            {sparseCategories.map((category) => <CategoryTile key={category.id} category={category} />)}
+      <section id="essentials" className="market-section" aria-labelledby="market-essentials-title">
+        <div className="market-section-heading">
+          <h2 id="market-essentials-title">Everyday essentials</h2>
+          <Link href="/search?all=1">Shop all <ArrowUpRight size={14} aria-hidden="true" /></Link>
+        </div>
+        {catalog.isLoading ? <div className="market-product-grid" role="status" aria-label="Loading essentials">{essentialSlugs.map((slug) => <i key={slug} aria-hidden="true" className="layout-block market-essential-skeleton" />)}</div> : catalog.isError && !catalog.data ? (
+          <div className="market-service-status" role="status">
+            <p>We couldn’t load the catalogue.</p>
+            <button type="button" onClick={() => void catalog.refetch()}>Try again</button>
           </div>
-        </section>
-      )}
+        ) : essentials.length ? (
+          <div className="market-product-grid">{essentials.map((product) => <BrowseProductCard key={product.id} product={product} />)}</div>
+        ) : <p className="market-empty">No essentials are available right now.</p>}
+      </section>
 
-      {shelves.filter(({ products }) => products.length >= 3).map(({ category, products: shelfProducts }) => (
-        <section data-storefront-reveal key={category.id} aria-labelledby={`shelf-${category.slug}`} className="space-y-1">
-          <div className="flex min-h-11 items-center justify-between gap-3">
-            <h2 id={`shelf-${category.slug}`} className="text-lg font-extrabold leading-tight tracking-tight text-[color:var(--theme-ink)] sm:text-xl">
-              {category.slug === "munchies-snacks" ? "Crunch on chips" : category.name}
-            </h2>
-            <Link
-              href={`/category/${category.slug}`}
-              aria-label={`See all ${category.name}`}
-              className="inline-flex min-h-11 shrink-0 items-center gap-0.5 text-xs font-bold text-[color:var(--theme-orange-text)] hover:underline sm:text-sm"
-            >
-              See all <ChevronRight aria-hidden="true" className="size-4" />
+      <aside className="market-order-offer" aria-label="First order coupon">
+        <div><strong>₹50 off your first order</strong><p>On eligible orders at checkout.</p></div>
+        <button type="button" aria-label="Copy coupon WELCOME50" onClick={async () => {
+          try {
+            await navigator.clipboard.writeText("WELCOME50");
+            showCustomerToast("WELCOME50 copied");
+          } catch {
+            showCustomerToast("Enter WELCOME50 at checkout");
+          }
+        }}>WELCOME50 <Copy size={14} aria-hidden="true" /></button>
+      </aside>
+
+      {deals.length > 0 && <section id="featured" data-market-reveal className="market-section" aria-labelledby="market-deals-title">
+        <div className="market-section-heading">
+          <h2 id="market-deals-title">Price drops</h2>
+          <Link href="/featured">See offers <ArrowUpRight size={14} aria-hidden="true" /></Link>
+        </div>
+        <div className="market-product-grid">{deals.map((product) => <BrowseProductCard key={product.id} product={product} />)}</div>
+      </section>}
+
+      {available.length > 0 && (
+        <section data-market-reveal className="market-spotlight" aria-labelledby="market-spotlight-title">
+          <div className="market-spotlight-banner">
+            <h2 id="market-spotlight-title">Browse an aisle</h2>
+          </div>
+          <div className="market-spotlight-tabs" role="tablist" aria-label="Spotlight aisles">
+            {spotlightTabs.map((tab) => (
+              <button
+                key={tab.slug}
+                type="button"
+                role="tab"
+                aria-selected={spotlightSlug === tab.slug}
+                className={spotlightSlug === tab.slug ? "is-active" : undefined}
+                onClick={() => setSpotlightSlug(tab.slug)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="market-spotlight-body">
+            {spotlightProducts.length > 0 ? (
+              <div className="market-product-grid">
+                {spotlightProducts.map((product) => <BrowseProductCard key={product.id} product={product} />)}
+              </div>
+            ) : (
+              <p className="market-empty">No items in this aisle right now.</p>
+            )}
+            <Link href={`/category/${spotlightSlug}`} className="market-see-all-bar">
+              <span>Explore {spotlightTabs.find((t) => t.slug === spotlightSlug)?.label}</span>
+              <ChevronRight size={14} aria-hidden="true" />
             </Link>
           </div>
-          <div data-storefront-stagger className="storefront-row">
-            {shelfProducts.map(renderCard)}
-          </div>
         </section>
-      ))}
+      )}
+
+      {saved.length > 0 && <section data-market-reveal className="market-section" aria-labelledby="market-saved-title">
+        <div className="market-section-heading"><h2 id="market-saved-title">Saved for later</h2></div>
+        <div className="market-product-grid">{saved.map((product) => <BrowseProductCard key={product.id} product={product} />)}</div>
+      </section>}
       <StorefrontBackToTop />
     </div>
   );
 }
 
-
-function HomeShelfPlaceholder({ featured = false }: { featured?: boolean }) {
+function CategoryTile({ category, index }: { category: Category; index: number }) {
+  const tint = aisleTints[index % aisleTints.length];
+  const src = category.image_url || aisleImages[category.slug] || "/storefront/fresh-shop.webp";
   return (
-    <div aria-hidden="true" className={featured ? "space-y-2" : "space-y-3"}>
-      <div className="relative h-5 w-36 overflow-hidden rounded bg-[var(--theme-skeleton)] storefront-skeleton sm:h-7" />
-      <div className="storefront-row">
-        {[0, 1, 2].map((index) => (
-          <div
-            key={index}
-            className={featured
-              ? "w-[44%] shrink-0 rounded-2xl border-2 border-transparent p-2.5 sm:w-[24%]"
-              : "w-[30%] min-w-27 shrink-0 rounded-2xl border border-transparent p-1.5 sm:p-2.5"}
-          >
-            {featured ? (
-              <>
-                <div className="mt-6 h-9 rounded bg-[var(--theme-skeleton)]" />
-                <div className="relative mt-2 aspect-[5/4] overflow-hidden rounded-xl bg-[var(--theme-skeleton)] storefront-skeleton" />
-              </>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-1">
-                  <div className="aspect-square max-h-22 rounded-lg bg-[var(--theme-skeleton)]" />
-                  <div className="aspect-square max-h-22 rounded-lg bg-[var(--theme-skeleton)]" />
-                </div>
-                <div className="mt-4 h-7 rounded bg-[var(--theme-skeleton)]" />
-              </>
-            )}
-          </div>
-        ))}
+    <Link href={`/category/${category.slug}`} className="market-category-card" style={{ background: tint }}>
+      <span>{aisleLabels[category.slug] ?? category.name}</span>
+      <div className="market-category-thumb media-frame">
+        <CatalogImage src={src} className="object-cover" />
       </div>
-      <div className={featured ? "h-6" : "h-12 rounded-xl bg-[var(--theme-skeleton)]"} />
-    </div>
-  );
-}
-
-function CategoryTile({ category }: { category: Category }) {
-  return (
-    <Link href={`/category/${category.slug}`} {...pressTilt} className="press-tilt group flex min-w-0 flex-col gap-1.5 text-center">
-      <div data-storefront-tile className="relative aspect-[1.05] overflow-hidden rounded-xl bg-[var(--peach)]">
-        <CatalogImage src={category.image_url} className="object-cover" />
-      </div>
-      <span className="text-[11px] font-bold leading-tight text-[color:var(--theme-ink)] group-hover:text-[color:var(--theme-orange-text)] sm:text-sm">{category.name}</span>
     </Link>
   );
 }
