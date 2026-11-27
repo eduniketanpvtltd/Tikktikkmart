@@ -243,7 +243,7 @@ const INITIAL_SECTIONS: WarehouseSection[] = [
   {
     id: "sec-a",
     code: "A",
-    name: "Produce & Fresh",
+    name: "Produce",
     tint: "#E3F0DA",
     bins: [
       { code: "A1", skuId: "seed-0" },
@@ -263,7 +263,7 @@ const INITIAL_SECTIONS: WarehouseSection[] = [
   {
     id: "sec-b",
     code: "B",
-    name: "Dairy & Chilled",
+    name: "Dairy",
     tint: "#FFF0DA",
     bins: [
       { code: "B1", skuId: "seed-1" },
@@ -283,7 +283,7 @@ const INITIAL_SECTIONS: WarehouseSection[] = [
   {
     id: "sec-c",
     code: "C",
-    name: "Staples & Atta",
+    name: "Staples",
     tint: "#F3E6CF",
     bins: [
       { code: "C1", skuId: "seed-8" },
@@ -303,7 +303,7 @@ const INITIAL_SECTIONS: WarehouseSection[] = [
   {
     id: "sec-d",
     code: "D",
-    name: "Snacks & Drinks",
+    name: "Snacks",
     tint: "#E8F0FA",
     bins: [
       { code: "D1", skuId: "seed-7" },
@@ -1689,11 +1689,24 @@ function TikkStockPortal() {
               {/* 2-Column IronNest Grid: Section Overview + Usage Donut & Inventory Overview */}
               <div className="grid gap-3.5 lg:grid-cols-[1.55fr_1fr]">
                 {/* Left Card: Section Overview */}
-                <section className="flex flex-col rounded-2xl border border-[#F0E4D2] bg-white p-4">
-                  <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
-                    <strong className="text-sm font-bold text-[#3A2418]">
-                      Section Overview ({sections.reduce((sum, s) => sum + s.bins.length, 0)})
-                    </strong>
+                <section className="flex flex-col rounded-2xl border border-[#F0E4D2] bg-white p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                  <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <strong className="text-sm font-bold text-[#3A2418]">
+                        Section Overview ({sections.reduce((sum, s) => sum + s.bins.length, 0)})
+                      </strong>
+                      <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-[#8A7060]">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="size-2.5 rounded-sm bg-[#FFF0DA] border border-[#EADBC6]" /> Occupied
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="size-2.5 rounded-sm border border-dashed border-[#D9C3A8] bg-[#FAF4EA]" /> Empty
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="size-2 rounded-full bg-[#D9453D]" /> Critical (≤5 or ≤2d)
+                        </span>
+                      </div>
+                    </div>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <button
                         type="button"
@@ -1734,7 +1747,7 @@ function TikkStockPortal() {
                           }`}
                         >
                           <div className="mb-2 flex items-center justify-between gap-1 text-[11px]">
-                            <strong className="truncate font-semibold text-[#3A2418]">
+                            <strong className="font-semibold text-[#3A2418]">
                               {sec.code} · {sec.name}
                             </strong>
                             <span className="shrink-0 font-semibold text-[#8A7060] tabular-nums">
@@ -1746,7 +1759,7 @@ function TikkStockPortal() {
                             {sec.bins.map((bin) => {
                               const binItem = bin.skuId ? items.find((i) => i.id === bin.skuId) : null;
                               const isAlert = Boolean(
-                                binItem && (binItem.stock <= binItem.re || (binItem.exp !== null && binItem.exp <= 3)),
+                                binItem && (binItem.stock <= 5 || (binItem.exp !== null && binItem.exp <= 2)),
                               );
                               const dimmed =
                                 (whFilter === "occupied" && !bin.skuId) ||
@@ -1784,22 +1797,24 @@ function TikkStockPortal() {
 
                   {/* Interactive Shelf Bin Inspector */}
                   {selectedBin && (
-                    <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-[#F0E4D2] bg-[#FBF6EE] px-3.5 py-2.5">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="rounded-md bg-[#A8421A] px-2 py-0.5 font-mono text-[11px] font-bold text-white">
-                            Shelf {selectedBin.code}
-                          </span>
-                          <strong className="truncate text-xs font-semibold text-[#3A2418]">
-                            {selectedBinItem ? `${selectedBinItem.name} (${selectedBinItem.stock} in stock)` : "Empty Shelf Slot"}
-                          </strong>
+                    <div className="mt-auto pt-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-[#F0E4D2] bg-[#FBF6EE] px-3.5 py-2.5">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-md bg-[#A8421A] px-2 py-0.5 font-mono text-[11px] font-bold text-white">
+                              Shelf {selectedBin.code}
+                            </span>
+                            <strong className="truncate text-xs font-semibold text-[#3A2418]">
+                              {selectedBinItem ? `${selectedBinItem.name} (${selectedBinItem.stock} in stock)` : "Empty Shelf Slot"}
+                            </strong>
+                            {selectedBinItem && <StatusPill status={getStatus(selectedBinItem)} />}
+                          </div>
+                          <p className="mt-0.5 text-[11px] text-[#8A7060]">
+                            {selectedBinItem
+                              ? `${selectedBinItem.sku} · ${selectedBinItem.cat} · ${formatInr(selectedBinItem.price)} · Reorder at ${selectedBinItem.re}`
+                              : "Assign a SKU from inventory to activate this rack slot."}
+                          </p>
                         </div>
-                        <p className="mt-0.5 text-[11px] text-[#8A7060]">
-                          {selectedBinItem
-                            ? `${selectedBinItem.sku} · ${formatInr(selectedBinItem.price)} · Reorder at ${selectedBinItem.re}`
-                            : "Assign a SKU from inventory to activate this rack slot."}
-                        </p>
-                      </div>
 
                       <div className="flex flex-wrap items-center gap-1.5">
                         {selectedBinItem ? (
@@ -1845,6 +1860,7 @@ function TikkStockPortal() {
                             ))}
                           </select>
                         )}
+                      </div>
                       </div>
                     </div>
                   )}
