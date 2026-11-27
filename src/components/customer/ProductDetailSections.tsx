@@ -62,7 +62,6 @@ export function ProductGallery({ product, discount }: { product: Product; discou
           </div>
         ))}
       </div>
-      {isIllustrativeCatalogImage(sources[0]) && <p className="text-center text-xs text-[color:var(--theme-muted)]">Illustrative product photo</p>}
       {Boolean(sources[0]) && (
         <div ref={dots} className="product-gallery-dots" aria-hidden="true">
           {sources.map((source) => <span key={source} />)}
@@ -120,7 +119,7 @@ export function ProductDetails({ product }: { product: DetailedProduct }) {
   return (
     <section className="product-panel" aria-label="Product information">
       {hasDetails && (
-        <ProductAccordion title="Product details" initiallyOpen>
+        <ProductAccordion title="Product details">
           {product.description && <p>{product.description}</p>}
           {highlights.length > 0 && <ul>{highlights.map((highlight, index) => <li key={index}>{highlight}</li>)}</ul>}
           {facts.length > 0 && (

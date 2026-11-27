@@ -125,7 +125,7 @@ export function CustomerHeader({ showSearch = true }: { showSearch?: boolean }) 
   });
 
   useEffect(() => {
-    if (pathname === "/cart" || pathname === "/checkout" || pathname === "/search" || pathname.startsWith("/product/") || pathname.startsWith("/orders/")) return;
+    if (pathname === "/cart" || pathname === "/checkout" || pathname === "/search" || pathname === "/profile" || pathname === "/categories" || pathname === "/orders" || pathname.startsWith("/product/") || pathname.startsWith("/orders/") || pathname.startsWith("/brand/")) return;
     let shadow = window.scrollY > 6;
     const deliveryHeight = deliveryWrap.current?.offsetHeight ?? 62;
     let collapsed = window.scrollY > deliveryHeight + 8;
@@ -288,7 +288,7 @@ export function CustomerHeader({ showSearch = true }: { showSearch?: boolean }) 
     scroller.scrollTo({ left, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   }
 
-  if (pathname === "/cart" || pathname === "/checkout" || pathname === "/search" || pathname.startsWith("/product/") || pathname.startsWith("/orders/")) return null;
+  if (pathname === "/cart" || pathname === "/checkout" || pathname === "/search" || pathname === "/profile" || pathname === "/categories" || pathname === "/orders" || pathname.startsWith("/product/") || pathname.startsWith("/orders/") || pathname.startsWith("/brand/")) return null;
 
   return (
     <>

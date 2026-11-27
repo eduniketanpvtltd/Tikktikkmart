@@ -38,25 +38,27 @@ function Highlight({ text, query }: { text: string; query: string }) {
 function SearchResults() {
   const params = useSearchParams();
   const initial = params.get("q") ?? "";
+  const brand = params.get("brand")?.trim() ?? "";
   const scope = params.get("scope");
   const showCatalogue = params.get("all") === "1";
   const department = browseDepartments.find(({ slug }) => slug === scope);
   const isFeatured = scope === "featured";
   const scopeLabel = isFeatured ? "Featured" : department?.label;
   const backHref = isFeatured ? featuredHref : department ? `/category/${department.slug}` : "/";
-  const [input, setInput] = useState(initial);
-  const [submitted, setSubmitted] = useState(Boolean(initial));
-  const [lookup, setLookup] = useState(initial.trim());
+  const [input, setInput] = useState(initial || brand);
+  const [submitted, setSubmitted] = useState(Boolean(initial || brand));
+  const [lookup, setLookup] = useState((initial || brand).trim());
   const [recent, setRecent] = useState<string[]>([]);
   const field = useRef<HTMLInputElement>(null);
   const query = input.trim();
   const storeId = useCartStore((state) => state.storeId);
 
   useEffect(() => {
-    setInput(initial);
-    setLookup(initial.trim());
-    setSubmitted(Boolean(initial));
-  }, [initial]);
+    const next = initial || brand;
+    setInput(next);
+    setLookup(next.trim());
+    setSubmitted(Boolean(next));
+  }, [initial, brand]);
 
   useEffect(() => { setRecent(readRecent()); }, []);
 
@@ -86,11 +88,13 @@ function SearchResults() {
     ? rankSearchProducts(scopeProducts, words, true).filter((product) => product.variants?.length)
     : [];
   const searchCatalog = !scopeLabel || (!scopeSource.isPending && !scopedMatches.length);
+  const activeBrand = brand && query.toLowerCase() === brand.toLowerCase() ? brand : "";
   const global = useQuery({
-    queryKey: ["search-with-related", lookup, storeId],
-    enabled: searchCatalog && Boolean(query && lookup === query),
+    queryKey: ["search-with-related", lookup, activeBrand, storeId],
+    enabled: searchCatalog && Boolean(activeBrand || (query && lookup === query)),
     queryFn: async ({ signal }) => {
       const qs = new URLSearchParams({ q: lookup, includeRelated: "1" });
+      if (activeBrand) qs.set("brand", activeBrand);
       if (storeId) qs.set("storeId", storeId);
       const response = await fetch(`/api/search?${qs}`, { signal });
       const result = await response.json();

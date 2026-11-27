@@ -7,7 +7,7 @@ import { useIntentPrefetch } from "@/lib/ui/useIntentPrefetch";
 import { getProductData } from "@/lib/catalog/productQuery";
 import { Heart, Minus, Plus, X } from "lucide-react";
 import { CatalogImage } from "@/components/customer/CatalogImage";
-import { signalStockLimit } from "@/components/customer/CustomerFeedback";
+import { signalStockLimit, showCustomerToast } from "@/components/customer/CustomerFeedback";
 import { QuantityNumber } from "@/components/customer/QuantityNumber";
 import { SwipeableSheet } from "@/components/ui/SwipeableSheet";
 import { pressTilt, useOpenProduct } from "@/lib/catalog/productMotion";
@@ -316,17 +316,20 @@ export function ProductCard({ product, compact = false, browse = false, saved = 
                         ) : (
                           <button
                             type="button"
-                            onClick={() => addItem({
-                              variantId: item.id,
-                              productId: product.id,
-                              name: product.name,
-                              label: item.label,
-                              image,
-                              price: itemPrice,
-                              mrp: item.mrp,
-                              maxQty: itemMax,
-                              stockLimit: item.stock_available,
-                            })}
+                            onClick={() => {
+                              addItem({
+                                variantId: item.id,
+                                productId: product.id,
+                                name: product.name,
+                                label: item.label,
+                                image,
+                                price: itemPrice,
+                                mrp: item.mrp,
+                                maxQty: itemMax,
+                                stockLimit: item.stock_available,
+                              });
+                              showCustomerToast(`Added ${item.label} to cart`);
+                            }}
                             className="market-card-add"
                           >
                             ADD

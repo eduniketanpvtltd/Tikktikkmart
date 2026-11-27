@@ -80,10 +80,9 @@ export default function CartPage() {
   const variants = new Map(catalog?.products.flatMap((product) =>
     (product.variants ?? []).map((variant) => [variant.id, variant] as const)));
 
-  async function applyCoupon(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function applyCouponCode(rawCode: string) {
     if (applying) return;
-    const code = (couponDraft ?? couponCode ?? "").trim().toUpperCase();
+    const code = rawCode.trim().toUpperCase();
     if (code !== welcomeCoupon) {
       showCustomerToast("Invalid coupon code");
       return;
@@ -114,10 +113,15 @@ export default function CartPage() {
     }
   }
 
+  function applyCoupon(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void applyCouponCode(couponDraft ?? couponCode ?? "");
+  }
+
   return (
     <div data-cart-page className="cart-review-page mx-auto min-h-svh max-w-[540px] bg-[#FBF6EE] text-[#3A2418]">
       <header className="cart-review-header cart-screen-entry sticky top-0 z-30 flex items-center gap-3 bg-[#FBF6EE]" data-shadow={hasShadow ? "" : undefined}>
-        <Link href={backHref} replace aria-label="Back" className="grid size-10 shrink-0 place-items-center rounded-full bg-[#FBE3CF] text-[#A8421A] hover:bg-[#F5D3B6]"
+        <Link href={backHref} replace aria-label="Back" className="grid size-10 shrink-0 place-items-center rounded-full border border-[#F0E4D2] bg-white text-[#3A2418] hover:bg-[#FBE3CF]"
           onNavigate={(event) => {
             if (!openedFromProduct.current) return;
             event.preventDefault();
@@ -192,6 +196,19 @@ export default function CartPage() {
                 <button type="submit" disabled={applying} className="min-h-11 rounded-xl bg-[#A8421A] px-4 text-sm font-bold text-white hover:bg-[#8E3513] disabled:opacity-60">
                   {applying ? "Checking…" : "Apply"}
                 </button>
+                {!couponCode && (
+                  <button
+                    type="button"
+                    disabled={applying}
+                    onClick={() => {
+                      setCouponDraft(welcomeCoupon);
+                      void applyCouponCode(welcomeCoupon);
+                    }}
+                    className="rounded-lg border border-dashed border-[#A8421A]/45 bg-[#FBE3CF]/55 px-2.5 py-1 text-[11px] font-bold text-[#A8421A] hover:bg-[#FBE3CF] disabled:opacity-60"
+                  >
+                    Use {welcomeCoupon} (₹50 off)
+                  </button>
+                )}
                 {couponCode && <button type="button" onClick={() => { setCoupon(null); setCouponDraft(""); }} className="w-full text-left text-xs font-bold text-[#A8421A]">Remove coupon</button>}
               </div>
             </form>
@@ -289,7 +306,7 @@ function CheckoutBar({ total, hidden, checkingCoupon }: { total: number; hidden:
       <Link
         href="/checkout"
         aria-disabled={checkingCoupon}
-        className="relative flex h-[52px] min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-[14px] bg-[#A8421A] px-3 text-[15px] font-bold text-white hover:bg-[#8E3513] aria-disabled:opacity-60 motion-safe:transition-transform motion-safe:active:scale-[.97]"
+        className="relative flex h-[48px] min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-full bg-[#A8421A] px-4 text-[14px] font-bold text-white hover:bg-[#8E3513] aria-disabled:opacity-60 motion-safe:transition-transform motion-safe:active:scale-[.97]"
         onClick={(event) => {
           shouldDelay.current = false;
           const marker = ripple.current;

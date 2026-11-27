@@ -121,7 +121,7 @@ export function CartRow({
       </span>
       <div
         ref={content}
-        className="cart-row-content relative grid touch-pan-y grid-cols-[58px_minmax(0,1fr)_auto] items-center gap-3 border-b border-[color:var(--theme-line)] bg-[var(--white)] px-[14px] py-3"
+        className="cart-row-content relative grid touch-pan-y grid-cols-[50px_minmax(0,1fr)_auto] items-center gap-3 border-b border-[#F0E4D2] bg-white px-[14px] py-2.5"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={finishPointer}
@@ -130,19 +130,19 @@ export function CartRow({
           if (!event.currentTarget.hasPointerCapture(event.pointerId)) finishPointer(event, true);
         }}
       >
-        <div className="cart-row-thumbnail relative size-[58px] overflow-hidden rounded-xl border border-[color:var(--theme-line)] bg-[var(--peach-light)]">
+        <div className="cart-row-thumbnail relative size-[50px] overflow-hidden rounded-xl border border-[#F0E4D2] bg-[#FFF6EA]">
           <CatalogImage src={item.image} className="object-contain p-1" />
         </div>
         <div className="min-w-0">
-          <h3 className="layout-wrap text-[13px] leading-snug font-bold">{item.name}</h3>
-          <p className="mt-0.5 truncate text-xs text-[color:var(--theme-muted)]">{item.label}</p>
+          <h3 className="layout-wrap text-[13px] leading-snug font-bold text-[#3A2418]">{item.name}</h3>
+          <p className="mt-0.5 truncate text-[11px] text-[#8A7060]">{item.label}</p>
         </div>
         <div className="cart-row-controls flex min-w-0 flex-col items-end">
-          <div ref={stepper} className="flex shrink-0 items-center rounded-[10px] border border-[color:var(--border-orange)] bg-[var(--theme-orange-fill)] text-white">
+          <div ref={stepper} className="flex shrink-0 items-center rounded-full border border-[#EADBC6] bg-[#FBE3CF] text-[#A8421A]">
             <button
               type="button"
               aria-label={`Decrease quantity of ${item.name}`}
-              className="grid h-11 w-11 place-items-center"
+              className="grid h-8 w-8 place-items-center"
               onClick={() => {
                 if (removing.current) return;
                 if (item.quantity === 1) remove();
@@ -155,7 +155,7 @@ export function CartRow({
             <button
               type="button"
               aria-label={`Increase quantity of ${item.name}`}
-              className="grid h-11 w-11 place-items-center"
+              className="grid h-8 w-8 place-items-center"
               onClick={(event) => {
                 if (removing.current) return;
                 const limits = { maxQty, stockLimit };
@@ -170,8 +170,10 @@ export function CartRow({
               <Plus aria-hidden="true" className="size-3.5" />
             </button>
           </div>
-          <span className="mt-1 text-sm font-extrabold leading-tight"><AnimatedRupees value={item.price * item.quantity} /></span>
-          {item.mrp > item.price && <s className="text-[11px] leading-tight text-[color:var(--theme-muted)]">{formatRupees(item.mrp * item.quantity)}</s>}
+          <div className="mt-1 flex items-baseline gap-1.5">
+            {item.mrp > item.price && <s className="text-[11px] leading-tight text-[#8A7060]">{formatRupees(item.mrp * item.quantity)}</s>}
+            <span className="text-[13px] font-extrabold leading-tight text-[#3A2418]"><AnimatedRupees value={item.price * item.quantity} /></span>
+          </div>
         </div>
       </div>
     </div>

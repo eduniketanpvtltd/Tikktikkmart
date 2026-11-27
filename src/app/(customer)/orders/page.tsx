@@ -1,13 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Bike, Box, CheckCircle2, Home, Package } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bike, Box, CheckCircle2, Home, Package, Receipt } from "lucide-react";
 import { formatRupees } from "@/components/customer/AnimatedRupees";
 import { LayoutSkeleton } from "@/components/ui/LayoutSkeleton";
 import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/components/providers/AppProviders";
 import type { OrderStatus, PaymentMethod } from "@/types/db";
+
+type OrderFilter = "all" | "active" | "completed" | "closed";
 
 type OrderSummary = {
   id: string;
@@ -98,37 +101,44 @@ function OrderCard({ order }: { order: OrderSummary }) {
 
   return (
     <article aria-labelledby={titleId} className="rounded-2xl border border-[#F0E4D2] bg-white p-4">
-      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        <h2 id={titleId} className="min-w-0 break-words text-[15px] font-extrabold leading-tight tabular-nums text-[#3A2418]">Order #{order.order_no}</h2>
+      <div className="flex items-start justify-between gap-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${statusColors[tone]}`}>
+            <Receipt size={16} aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <h2 id={titleId} className="truncate text-[15px] font-extrabold leading-tight tabular-nums text-[#3A2418]">
+              Order #{order.order_no}
+            </h2>
+            <p className="mt-0.5 truncate text-[11px] text-[#8A7060]">
+              {order.store?.name ?? "Tikk Tikk Mart"}
+              {Number.isFinite(date.getTime()) && ` · ${orderDate.format(date)}`}
+            </p>
+          </div>
+        </div>
         <span className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-bold ${statusColors[tone]}`}>
           {trackable && <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />}
           {label}
         </span>
       </div>
-      <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-[#8A7060]">
-        <span>{order.store?.name ?? "Tikk Tikk Mart"}</span>
-        {Number.isFinite(date.getTime()) && (
-          <>
-            <span aria-hidden="true">·</span>
-            <time dateTime={order.placed_at}>{orderDate.format(date)}</time>
-          </>
-        )}
-      </div>
 
       {trackable && (
-        <div className="relative my-4">
-          <div className="absolute top-3.5 left-[12.5%] right-[12.5%] h-[3px] rounded-full bg-[#F0E4D2]" />
+        <div className="relative my-4 rounded-xl bg-[#FBF6EE] px-2 py-3">
+          <div className="absolute top-[25px] left-[12.5%] right-[12.5%] h-[3px] rounded-full bg-[#EADBC6]" />
           <div
-            className="absolute top-3.5 left-[12.5%] h-[3px] rounded-full bg-[#A8421A] transition-all duration-500"
+            className="absolute top-[25px] left-[12.5%] h-[3px] rounded-full bg-[#A8421A] transition-all duration-500"
             style={{ width: `${(stepIndex / 3) * 75}%` }}
           />
           <div className="relative flex">
             {ORDER_STEPS.map((step, i) => {
               const Icon = step.icon;
               const done = i <= stepIndex;
+              const current = i === stepIndex;
               return (
-                <div key={step.label} className={`flex-1 text-center text-[11px] font-medium ${done ? "text-[#3A2418]" : "text-[#A89484]"}`}>
-                  <div className={`mx-auto mb-1 flex size-7 items-center justify-center rounded-full ${done ? "bg-[#A8421A] text-white" : "bg-[#F0E4D2] text-[#A89484]"}`}>
+                <div key={step.label} className={`flex-1 text-center text-[11px] font-semibold ${done ? "text-[#3A2418]" : "text-[#A89484]"}`}>
+                  <div className={`mx-auto mb-1 flex size-7 items-center justify-center rounded-full ${
+                    done ? "bg-[#A8421A] text-white" : "bg-[#F0E4D2] text-[#A89484]"
+                  } ${current ? "ring-4 ring-[#A8421A]/20" : ""}`}>
                     <Icon size={14} aria-hidden="true" />
                   </div>
                   {step.label}
@@ -171,6 +181,7 @@ function OrderCard({ order }: { order: OrderSummary }) {
 
 export default function OrdersListPage() {
   const { user, loading } = useAuth();
+  const [filter, setFilter] = useState<OrderFilter>("all");
   const orders = useQuery({
     queryKey: ["my-orders", user?.id],
     enabled: Boolean(user),
@@ -180,25 +191,64 @@ export default function OrdersListPage() {
     },
   });
 
-  const activeOrders = (orders.data ?? []).filter((o) => statuses[o.status].tone === "active" || statuses[o.status].tone === "waiting");
-  const pastOrders = (orders.data ?? []).filter((o) => statuses[o.status].tone !== "active" && statuses[o.status].tone !== "waiting");
+  const allOrders = orders.data ?? [];
+  const filtered = allOrders.filter((o) => {
+    const tone = statuses[o.status].tone;
+    if (filter === "active") return tone === "active" || tone === "waiting";
+    if (filter === "completed") return tone === "complete";
+    if (filter === "closed") return tone === "closed";
+    return true;
+  });
+
+  const activeOrders = filtered.filter((o) => statuses[o.status].tone === "active" || statuses[o.status].tone === "waiting");
+  const pastOrders = filtered.filter((o) => statuses[o.status].tone !== "active" && statuses[o.status].tone !== "waiting");
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 pb-6 text-[#3A2418]">
-      <header className="flex items-center gap-3">
+    <div className="mx-auto max-w-2xl space-y-4 pb-24 text-[#3A2418]">
+      <header className="flex items-center gap-3 pt-1">
         <Link href="/" aria-label="Back to Home"
-          className={`${focusRing} grid size-10 shrink-0 place-items-center rounded-full bg-[#FBE3CF] text-[#A8421A] hover:bg-[#F5D3B6]`}>
+          className={`${focusRing} grid size-10 shrink-0 place-items-center rounded-full border border-[#F0E4D2] bg-white text-[#3A2418] hover:bg-[#FBE3CF]`}>
           <ArrowLeft size={18} aria-hidden="true" />
         </Link>
         <div className="min-w-0">
-          <h1 className="text-xl font-extrabold leading-tight tracking-tight sm:text-2xl">Orders</h1>
+          <h1 className="text-[20px] font-extrabold leading-tight tracking-tight">Orders</h1>
           <p className="mt-0.5 text-xs leading-snug text-[#8A7060]">Track deliveries and view past orders</p>
         </div>
       </header>
 
+      {!loading && !orders.isLoading && user && allOrders.length > 0 && (
+        <div role="group" aria-label="Filter orders" className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none]">
+          {(
+            [
+              { id: "all", label: `All (${allOrders.length})` },
+              { id: "active", label: "Active" },
+              { id: "completed", label: "Delivered" },
+              { id: "closed", label: "Cancelled / Failed" },
+            ] as const
+          ).map((chip) => {
+            const active = filter === chip.id;
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setFilter(chip.id)}
+                className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                  active
+                    ? "border border-[#A8421A] bg-[#FBE3CF] text-[#A8421A] font-bold"
+                    : "border border-[#EADBC6] bg-white text-[#3A2418] hover:bg-[#FBE3CF]/40"
+                }`}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {loading || orders.isLoading ? (
         <LayoutSkeleton shape="list" label="Loading order history" />
-      ) : !user || !orders.data?.length ? (
+      ) : !user || !allOrders.length ? (
         <section className="space-y-3 rounded-2xl border border-[#F0E4D2] bg-white px-5 py-9 text-center">
           <span className="mx-auto grid size-12 place-items-center rounded-full bg-[#FBE3CF] text-[#A8421A]">
             <Package size={22} aria-hidden="true" />
@@ -215,6 +265,13 @@ export default function OrdersListPage() {
           ) : (
             <Link href={user ? "/" : "/login"} className={`${primaryAction} ${focusRing}`}>{user ? "Start shopping" : "Sign in"}</Link>
           )}
+        </section>
+      ) : filtered.length === 0 ? (
+        <section className="space-y-3 rounded-2xl border border-[#F0E4D2] bg-white px-5 py-8 text-center">
+          <p className="text-sm font-bold text-[#3A2418]">No orders match this filter</p>
+          <button type="button" onClick={() => setFilter("all")} className={`${primaryAction} ${focusRing}`}>
+            Show all orders
+          </button>
         </section>
       ) : (
         <div className="space-y-5">

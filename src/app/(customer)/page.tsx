@@ -259,13 +259,9 @@ export default function CustomerHomePage() {
 
       <aside className="market-order-offer" aria-label="First order coupon">
         <div><strong>₹50 off your first order</strong><p>On eligible orders at checkout.</p></div>
-        <button type="button" aria-label="Copy coupon WELCOME50" onClick={async () => {
-          try {
-            await navigator.clipboard.writeText("WELCOME50");
-            showCustomerToast("WELCOME50 copied");
-          } catch {
-            showCustomerToast("Enter WELCOME50 at checkout");
-          }
+        <button type="button" aria-label="Copy coupon WELCOME50" onClick={() => {
+          copyText("WELCOME50");
+          showCustomerToast("WELCOME50 copied");
         }}>WELCOME50 <Copy size={14} aria-hidden="true" /></button>
       </aside>
 
@@ -319,6 +315,24 @@ export default function CustomerHomePage() {
       <StorefrontBackToTop />
     </div>
   );
+}
+
+function copyText(text: string) {
+  if (navigator.clipboard?.writeText) {
+    void navigator.clipboard.writeText(text).catch(() => {});
+    return;
+  }
+  const el = document.createElement("textarea");
+  el.value = text;
+  el.setAttribute("readonly", "");
+  el.style.position = "fixed";
+  el.style.opacity = "0";
+  document.body.appendChild(el);
+  el.select();
+  try {
+    document.execCommand("copy");
+  } catch {}
+  el.remove();
 }
 
 function CategoryTile({ category, index }: { category: Category; index: number }) {

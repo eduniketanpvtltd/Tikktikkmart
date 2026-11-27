@@ -1,6 +1,7 @@
 "use client";
 
 import { BlurHashPreview, readImagePreview, rememberImagePreview } from "@/components/ui/BlurHashPreview";
+import { ShoppingBag } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export function CatalogImage({
@@ -36,7 +37,11 @@ export function CatalogImage({
   return (
     <span className="media-frame catalog-image-frame">
       {!ready && preview && <BlurHashPreview hash={preview} />}
-      {!ready && !preview && <span aria-hidden="true" className={`absolute inset-0 overflow-hidden rounded-[inherit] bg-[var(--theme-skeleton)] ${hasSource ? "catalog-image-loading" : ""}`} />}
+      {!ready && !preview && (
+        <span aria-hidden="true" className={`absolute inset-0 grid place-items-center overflow-hidden rounded-[inherit] ${hasSource ? "bg-[var(--theme-skeleton)] catalog-image-loading" : "bg-[#FBF6EE] text-[#A8421A]/35"}`}>
+          {!hasSource && <ShoppingBag className="size-6 stroke-[1.6]" />}
+        </span>
+      )}
       {hasSource && src && (
         <img
           ref={imgRef}

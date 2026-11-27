@@ -2,7 +2,7 @@
 import { formatRupees } from "@/components/customer/AnimatedRupees";
 import { useCartQuote } from "@/lib/pricing/useCartQuote";
 import { LayoutSkeleton } from "@/components/ui/LayoutSkeleton";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -85,7 +85,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const { user, loading: authLoading } = useAuth();
-  const { storeId, items, couponCode, tip, location, clearCart } = useCartStore();
+  const { storeId, items, couponCode, tip, location, etaMinutes, serviceable, clearCart } = useCartStore();
 
   const { data: quote, isLoading: quoteLoading, isFetching: checkingTotal, refetch: refreshTotal } = useCartQuote();
   const addressSection = useRef<HTMLElement>(null);
@@ -94,6 +94,7 @@ export default function CheckoutPage() {
   const [selectedInstructions, setSelectedInstructions] = useState<string[]>([]);
   const [customInstruction, setCustomInstruction] = useState("");
   const [placing, setPlacing] = useState(false);
+  const [placedOrder, setPlacedOrder] = useState<{ id: string; orderNo: string | number } | null>(null);
   const [paymentOrderId, setPaymentOrderId] = useState<string>();
   const [retryingOrder, setRetryingOrder] = useState(false);
   const activeAttempt = useRef<{ body: string; key: string; clear: () => void } | null>(null);
@@ -103,6 +104,16 @@ export default function CheckoutPage() {
   const savingAddress = useRef(false);
   const [addressPending, setAddressPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!placedOrder) return;
+    router.prefetch(`/orders/${placedOrder.id}`);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => {
+      router.replace(`/orders/${placedOrder.id}`);
+    }, reduced ? 400 : 1450);
+    return () => window.clearTimeout(timer);
+  }, [placedOrder, router]);
 
   const [showNewAddr, setShowNewAddr] = useState(false);
   const [addrForm, setAddrForm] = useState({
@@ -155,6 +166,34 @@ export default function CheckoutPage() {
   }
 
   const effectiveStoreId = storeId || "11111111-1111-1111-1111-111111111111";
+
+  if (placedOrder) {
+    return (
+      <div className="market-placed-screen" role="status" aria-live="polite">
+        <div className="market-placed-card">
+          <div className="market-placed-emblem" aria-hidden="true">
+            <span className="market-placed-ring" />
+            <span className="market-placed-badge">
+              <svg viewBox="0 0 36 36" className="size-8" fill="none">
+                <path
+                  d="M9 18.5L15.2 24.5L27 12"
+                  stroke="currentColor"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="market-placed-check"
+                />
+              </svg>
+            </span>
+          </div>
+          <h1>Order placed</h1>
+          <p className="market-placed-sub">
+            {serviceable === false ? "Confirming with your store" : `Arriving in ${etaMinutes ?? 14} min`}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!items.length) {
     return (
@@ -257,8 +296,8 @@ export default function CheckoutPage() {
         attempt.clear();
         activeAttempt.current = null;
         clearCart();
-        showCustomerToast("Order placed!", true);
-        router.push(`/orders/${order.id}`);
+        router.prefetch(`/orders/${order.id}`);
+        setPlacedOrder({ id: order.id, orderNo: order.order_no });
       };
 
       if (state === "complete") {
@@ -349,9 +388,9 @@ export default function CheckoutPage() {
             type="button"
             disabled={lockOrderFields}
             onClick={() => setShowNewAddr((s) => !s)}
-            className="text-xs font-black text-[#A8421A] hover:underline inline-flex items-center gap-1"
+            className="rounded-full bg-[#FBE3CF] px-3 py-1 text-xs font-bold text-[#A8421A] hover:bg-[#F5D3B6] inline-flex items-center gap-1 transition-colors"
           >
-            <Plus className="w-3.5 h-3.5 stroke-[3]" /> Add New
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" /> Add New
           </button>
         </div>
 
@@ -572,7 +611,7 @@ export default function CheckoutPage() {
           disabled={lockOrderFields}
           value={customInstruction}
           onChange={(e) => setCustomInstruction(e.target.value)}
-          placeholder="Additional note (e.g. Ring phone once outside building)"
+          placeholder="Add delivery note (e.g. Call once outside)"
           className="w-full border border-[#EADBC6] bg-[#FBF6EE] rounded-xl px-3 py-2 text-xs text-[#3A2418] focus:outline-none focus:border-[#A8421A]"
         />
       </section>

@@ -11,12 +11,22 @@ function availableFirst(products: Product[]) {
 }
 
 export async function GET(req: NextRequest) {
+  const brand = req.nextUrl.searchParams.get("brand")?.trim() ?? "";
   const words = searchWords(req.nextUrl.searchParams.get("q") ?? "");
   const storeId = req.nextUrl.searchParams.get("storeId");
   const withRelated = req.nextUrl.searchParams.get("includeRelated") === "1";
-  if (!words.length) return ok(withRelated ? { products: [], related: [] } : []);
 
   const catalog = () => activeCatalogProducts(storeId);
+
+  if (brand) {
+    const { data, error } = await catalog().ilike("brand", brand).order("created_at", { ascending: false }).limit(100);
+    if (error) return fail("Search is temporarily unavailable", 503);
+    const matched = (data ?? []).map((product) => catalogProduct(product, storeId));
+    if (!withRelated) return ok(availableFirst(matched));
+    return ok({ products: availableFirst(matched), related: [] });
+  }
+
+  if (!words.length) return ok(withRelated ? { products: [], related: [] } : []);
   const { data, error } = await catalog().textSearch("search", searchExpression(words), { config: "simple" }).limit(30);
   if (error) return fail("Search is temporarily unavailable", 503);
 

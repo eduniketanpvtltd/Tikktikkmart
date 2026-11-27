@@ -28,20 +28,20 @@ export function FloatingCartBar() {
         href="/cart"
         onNavigate={rememberCartOrigin}
         data-cart-pill
-        className="group pointer-events-auto flex min-h-12 w-46 max-w-full items-center gap-2.5 rounded-full bg-[var(--navy)] py-1.5 pl-1.5 pr-2.5 text-white shadow-[0_5px_16px_rgba(19,25,59,0.24)] transition-colors hover:bg-[var(--theme-navy-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--navy)]"
+        className="group pointer-events-auto flex min-h-12 w-48 max-w-full items-center gap-2.5 rounded-full bg-[#A8421A] py-1.5 pl-1.5 pr-2.5 text-white shadow-[0_8px_22px_rgba(168,66,26,0.34)] transition-colors hover:bg-[#8E3513] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A8421A]"
       >
-        <span data-cart-thumbnail className="relative media-frame grid size-9 shrink-0 place-items-center rounded-full bg-[var(--peach-light)]">
+        <span data-cart-thumbnail className="relative media-frame grid size-9 shrink-0 overflow-hidden rounded-full border border-white/25 bg-[#FBF6EE]">
           {preview ? (
-            <CatalogImage src={preview} className="object-contain p-1.5" />
+            <CatalogImage src={preview} loading="eager" className="object-cover" />
           ) : (
-            <ShoppingBag aria-hidden="true" className="size-4 text-[color:var(--theme-orange-text)]" />
+            <ShoppingBag aria-hidden="true" className="size-4 text-[#A8421A]" />
           )}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-sm leading-tight font-bold">View cart</span>
           <span className="block text-xs leading-tight text-white/90">{count} {count === 1 ? "item" : "items"}</span>
         </span>
-        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-white/10">
+        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-black/15">
           <ChevronRight aria-hidden="true" className="size-4 motion-safe:transition-transform motion-safe:group-hover:translate-x-1" />
         </span>
       </Link>

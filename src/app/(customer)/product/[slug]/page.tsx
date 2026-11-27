@@ -4,7 +4,18 @@ import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "r
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Heart, Minus, Plus, Share2, ShoppingCart } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Clock3,
+  Heart,
+  Minus,
+  PackageCheck,
+  Plus,
+  Search,
+  Share2,
+  ShoppingCart,
+} from "lucide-react";
 import { AnimatedRupees, formatRupees } from "@/components/customer/AnimatedRupees";
 import { showCustomerToast, signalStockLimit } from "@/components/customer/CustomerFeedback";
 import { getCardImage } from "@/components/customer/ProductCard";
@@ -58,6 +69,7 @@ function ProductDetail({ product, storeId, refresh }: {
   const toggleProduct = useWishlistStore((state) => state.toggleProduct);
   const [selectedId, setSelectedId] = useState<string>();
   const [scrolled, setScrolled] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const variants = product.variants ?? [];
   const variant = variants.find((item) => item.id === selectedId) ?? variants[0];
   const { price, mrp, discount } = variantPricing(variant);
@@ -147,7 +159,7 @@ function ProductDetail({ product, storeId, refresh }: {
       <header className="product-header" data-solid={scrolled ? "" : undefined}>
         <button type="button" aria-label="Back" className="product-header-button"
           onClick={() => closeProductTransition(product.slug, () => router.back(), () => router.push("/"))}>
-          <ArrowLeft aria-hidden="true" size={21} />
+          <ChevronDown aria-hidden="true" size={21} />
         </button>
         <span className="product-header-title" aria-hidden="true">{product.name}</span>
         <button type="button" aria-label={saved ? "Remove from wishlist" : "Add to wishlist"}
@@ -157,60 +169,142 @@ function ProductDetail({ product, storeId, refresh }: {
             toggleProduct(product.id);
             showCustomerToast(wasSaved ? "Removed from wishlist" : "Added to wishlist");
           }}>
-          <Heart aria-hidden="true" size={21} />
+          <Heart aria-hidden="true" size={20} />
         </button>
+        <Link href="/search" aria-label="Search products" className="product-header-button">
+          <Search aria-hidden="true" size={19} />
+        </Link>
         <button type="button" aria-label="Share product" className="product-header-button" onClick={share}>
-          <Share2 aria-hidden="true" size={20} />
+          <Share2 aria-hidden="true" size={19} />
         </button>
         <Link href="/cart" onNavigate={rememberCartOrigin} aria-label={`Cart, ${cartCount} ${cartCount === 1 ? "item" : "items"}`}
           className="product-header-button" data-product-cart>
-          <ShoppingCart aria-hidden="true" size={21} />
+          <ShoppingCart aria-hidden="true" size={19} />
           <span aria-hidden="true" data-product-cart-count className="product-cart-count">{cartCount}</span>
         </Link>
       </header>
 
       <div className="product-content">
         <ProductGallery product={product} discount={discount} />
-        <div className="product-body">
-          <section aria-labelledby="product-name" className="product-info">
-            {etaMinutes != null && serviceable !== false && <span className="product-eta">Delivery in {etaMinutes} min</span>}
-            <h1 id="product-name">{product.name}</h1>
-            {hasRating && (
-              <div className="product-rating">
-                <strong aria-label={`${rating} out of 5 stars`}>★ {rating.toFixed(1)}</strong>
-                {reviews > 0 && <span>{reviews.toLocaleString("en-IN")} {reviews === 1 ? "rating" : "ratings"}</span>}
+        <div className="relative z-10 -mt-3 space-y-2.5 px-[14px]">
+          {/* Highlights + View details strip */}
+          <div className="flex gap-2">
+            <div className="min-w-0 flex-1 overflow-hidden rounded-[14px] border border-[#F0E4D2] bg-white">
+              <div className="bg-[#F6EFE4] px-3 py-1 text-[11px] font-medium text-[#8A7060]">
+                Highlights
               </div>
-            )}
-            {variants.length > 1 && (
-              <div role="group" aria-label="Pack size" className="product-variants">
-                {variants.map((option) => (
-                  <button key={option.id} type="button" aria-pressed={option.id === variant?.id}
-                    onClick={() => setSelectedId(option.id)}>
-                    <strong>{option.label}</strong>
-                    <span>{formatRupees(variantPricing(option).price)}</span>
-                  </button>
-                ))}
+              <div className="truncate px-3 py-2 text-[13px] font-semibold text-[#3A2418]">
+                {product.highlights?.[0] || product.description || "Farm-fresh quality, picked & packed"}
               </div>
-            )}
-            {variant && (
+            </div>
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((v) => !v)}
+              aria-expanded={detailsOpen}
+              className="flex w-[84px] shrink-0 items-center justify-center rounded-[14px] border border-[#BFE0C8] bg-[#EAF6EE] px-2 text-center text-xs font-semibold text-[#2E7D4F] transition-colors hover:bg-[#DCF0E2]"
+            >
+              {detailsOpen ? "Hide details" : "View details"}
+            </button>
+          </div>
+
+          {detailsOpen && (
+            <div className="rounded-[14px] border border-[#BFE0C8] bg-[#EAF6EE] p-3 text-xs leading-relaxed text-[#2E5E40]">
+              {product.storage_usage || product.storage || product.description || "Store in a cool, dry place. Best enjoyed fresh."}
+            </div>
+          )}
+
+          {/* Main Product Info + Unit Selector */}
+          <section aria-labelledby="product-name" className="rounded-2xl border border-[#F0E4D2] bg-white p-4">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-lg bg-[#E3F0EE] px-2.5 py-1 font-semibold text-[#1F6F6A]">
+                Popular pick
+              </span>
+              {etaMinutes != null && serviceable !== false && (
+                <span className="inline-flex items-center gap-1 font-medium text-[#8A7060]">
+                  <Clock3 aria-hidden="true" size={13} /> {etaMinutes} mins
+                </span>
+              )}
+              {hasRating && (
+                <span className="ml-auto inline-flex items-center gap-1 rounded-lg bg-[#EAF6EE] px-2 py-0.5 font-bold text-[#2E7D4F]">
+                  ★ {rating.toFixed(1)}
+                  {reviews > 0 && <span className="font-normal text-[#8A7060]">({reviews.toLocaleString("en-IN")})</span>}
+                </span>
+              )}
+            </div>
+
+            <h1 id="product-name" className="mt-2.5 text-[21px] font-bold leading-snug tracking-tight text-[#3A2418]">
+              {product.name}
+            </h1>
+
+            {variants.length > 0 && (
               <>
-                <div className="product-price">
-                  <strong><AnimatedRupees value={price} duration={420} /></strong>
-                  {mrp > price && <s aria-label={`MRP ${formatRupees(mrp)}`}>{formatRupees(mrp)}</s>}
-                  {discount > 0 && <span className="product-price-discount">{discount}% off</span>}
+                <p className="mt-3 mb-2 text-xs font-bold text-[#3A2418]">Select unit</p>
+                <div role="group" aria-label="Pack size" className="product-variants !m-0 !p-0">
+                  {variants.map((option) => {
+                    const vp = variantPricing(option);
+                    return (
+                      <button key={option.id} type="button" aria-pressed={option.id === variant?.id}
+                        onClick={() => setSelectedId(option.id)}>
+                        <strong className="text-[14px] font-semibold text-[#3A2418]">{option.label}</strong>
+                        <span className="flex items-baseline gap-1.5">
+                          <span className="text-[16px] font-bold text-[#3A2418]">{formatRupees(vp.price)}</span>
+                          {vp.mrp > vp.price && (
+                            <s className="text-[11px] text-[#8A7060]">MRP {formatRupees(vp.mrp)}</s>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-                <p className="product-tax">Inclusive of all taxes</p>
               </>
             )}
           </section>
+
+          {/* Brand Row */}
+          <Link
+            href={product.brand ? `/brand/${encodeURIComponent(product.brand)}` : `/search?q=${encodeURIComponent(product.name)}`}
+            className="flex items-center gap-3 rounded-2xl border border-[#F0E4D2] bg-white p-3 transition-colors hover:bg-[#FFF9F2]"
+          >
+            <span className="grid size-[46px] shrink-0 place-items-center rounded-xl bg-[#A8421A] text-lg font-bold text-white">
+              {(product.brand || product.name).trim().charAt(0).toUpperCase()}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[15px] font-semibold text-[#3A2418]">
+                {product.brand || "Tikk Tikk Mart"}
+              </span>
+              <span className="block text-xs text-[#8A7060]">Explore all products</span>
+            </span>
+            <ChevronRight aria-hidden="true" size={18} className="shrink-0 text-[#8A7060]" />
+          </Link>
+
+          {/* Replacement Policy Row */}
+          <div className="flex items-center gap-3 rounded-2xl border border-[#F0E4D2] bg-white p-3">
+            <span className="grid size-[46px] shrink-0 place-items-center rounded-xl bg-[#F6EFE4] text-[#8A7060]">
+              <PackageCheck aria-hidden="true" size={22} />
+            </span>
+            <span className="flex-1 text-sm font-semibold text-[#3A2418]">
+              48 hours only replacement
+            </span>
+            <ChevronRight aria-hidden="true" size={18} className="shrink-0 text-[#8A7060]" />
+          </div>
+
           <ProductDetails product={product} />
-          <ProductShelf title="Similar products" products={related?.similar} loading={relatedLoading} />
+          <ProductShelf title="Top products in this category" products={related?.similar} loading={relatedLoading} />
           <ProductShelf title="People also bought" products={related?.alsoBought} loading={relatedLoading} />
         </div>
       </div>
 
       <div className="product-buy-bar">
-        {variant && <div className="product-bar-price">Price<strong><AnimatedRupees value={price} duration={420} /></strong></div>}
+        {variant && (
+          <div className="product-bar-price">
+            <span className="block text-xs font-medium text-[#3A2418]">{variant.label}</span>
+            <div className="flex items-baseline gap-1.5">
+              <strong><AnimatedRupees value={price} duration={420} /></strong>
+              {mrp > price && <s className="text-[11px] text-[#8A7060]">MRP {formatRupees(mrp)}</s>}
+            </div>
+            <span className="block text-[10px] text-[#8A7060]">Inclusive of all taxes</span>
+          </div>
+        )}
         {soldOut ? (
           <div className="product-sold-controls">
             <button type="button" className="product-purchase" disabled>Out of stock</button>

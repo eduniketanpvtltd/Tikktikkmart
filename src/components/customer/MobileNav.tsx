@@ -12,12 +12,12 @@ export function MobileNav() {
   const pathname = usePathname();
   const { user } = useAuth();
   const count = useCartStore((state) => state.items.reduce((total, item) => total + item.quantity, 0));
-  if (pathname === "/cart" || pathname === "/checkout" || pathname.startsWith("/product/") || pathname.startsWith("/orders/")) return null;
+  if (pathname === "/cart" || pathname === "/checkout" || pathname.startsWith("/product/") || pathname.startsWith("/orders/") || pathname.startsWith("/brand/")) return null;
 
   const itemCount = `${count} ${count === 1 ? "item" : "items"}`;
   const links = [
     { label: "Home", href: "/", icon: Home, active: pathname === "/" },
-    { label: "Categories", href: "/#categories", icon: Grid2X2, active: pathname.startsWith("/category/") },
+    { label: "Categories", href: "/categories", icon: Grid2X2, active: pathname === "/categories" || pathname.startsWith("/category/") },
     { label: "Orders", href: "/orders", icon: Package, active: pathname === "/orders" },
     { label: "Account", href: user ? "/profile" : "/login", icon: User, active: pathname === "/profile" },
     { label: "Cart", href: "/cart", icon: ShoppingCart, active: false },
