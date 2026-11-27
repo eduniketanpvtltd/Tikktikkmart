@@ -386,6 +386,7 @@ function TikkStockPortal() {
     orderChime: true,
     autoPoDraft: false,
   });
+  const [logFilter, setLogFilter] = useState<"all" | "sale" | "restock" | "adjust" | "ops">("all");
 
   const rackBySkuId = useMemo(() => {
     const map: Record<string, string> = {};
@@ -3186,44 +3187,167 @@ function TikkStockPortal() {
             </div>
           )}
 
-          {tab === "log" && (
-            <section className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5">
-              <div className="mb-2 flex items-center justify-between">
-                <h2 className="text-sm font-semibold">Stock movements</h2>
-                <span className="text-xs text-[#8A7060]">{events.length} events</span>
-              </div>
-              {events.length === 0 ? (
-                <p className="text-xs text-[#8A7060]">No activity yet</p>
-              ) : (
-                <div className="divide-y divide-[#F5EBDB]">
-                  {events.map((ev) => (
-                    <div key={ev.id} className="flex items-center gap-2.5 py-2">
-                      <span className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-[#FBE3CF] text-[#A8421A]">
-                        {ev.type === "sale" ? (
-                          <ShoppingCart className="size-4" />
-                        ) : ev.type === "restock" ? (
-                          <Truck className="size-4" />
-                        ) : (
-                          <SlidersHorizontal className="size-4" />
-                        )}
-                      </span>
-                      <p className="min-w-0 flex-1 text-xs">{ev.txt}</p>
-                      {ev.delta !== 0 && (
-                        <span
-                          className={`rounded-[10px] px-2 py-0.5 text-[11px] font-semibold ${
-                            ev.delta > 0 ? "bg-[#E3F0DA] text-[#2E7D4F]" : "bg-[#FFF0D0] text-[#B7791F]"
+          {tab === "log" && (() => {
+            const qLog = query.trim().toLowerCase();
+            const filteredEvents = events.filter((ev) => {
+              if (qLog && !ev.txt.toLowerCase().includes(qLog)) return false;
+              if (logFilter === "sale") return ev.type === "sale";
+              if (logFilter === "restock") return ev.type === "restock" || ev.type === "po";
+              if (logFilter === "adjust") return ev.type === "adjust" || ev.type === "add" || ev.type === "edit" || ev.type === "delete";
+              if (logFilter === "ops") return ev.type === "clearance" || ev.type === "po";
+              return true;
+            });
+            const salesEvents = events.filter((e) => e.type === "sale");
+            const unitsOut = salesEvents.reduce((s, e) => s + Math.abs(Math.min(0, e.delta)), 0);
+            const unitsIn = events.reduce((s, e) => s + Math.max(0, e.delta), 0);
+
+            return (
+              <div className="space-y-3.5">
+                {/* 3 Activity Summary KPI Cards */}
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                    <div className="flex items-center justify-between text-xs text-[#8A7060]">
+                      <span>Total Movements</span>
+                      <History className="size-4 text-[#A8421A]" />
+                    </div>
+                    <b className="mt-1.5 block text-2xl font-bold tabular-nums">{events.length}</b>
+                    <span className="text-[11px] text-[#8A7060]">Live audit events</span>
+                  </div>
+
+                  <div className="rounded-2xl border border-[#F0E4D2] bg-white p-3.5 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                    <div className="flex items-center justify-between text-xs text-[#8A7060]">
+                      <span>Units Sold</span>
+                      <ShoppingCart className="size-4 text-[#B7791F]" />
+                    </div>
+                    <b className="mt-1.5 block text-2xl font-bold tabular-nums text-[#B7791F]">{unitsOut}</b>
+                    <span className="text-[11px] text-[#8A7060]">{salesEvents.length} order events</span>
+                  </div>
+
+                  <div className="col-span-2 rounded-2xl border border-[#F0E4D2] bg-white p-3.5 shadow-[0_1px_2px_rgba(58,36,24,0.04)] sm:col-span-1">
+                    <div className="flex items-center justify-between text-xs text-[#8A7060]">
+                      <span>Units Restocked</span>
+                      <Truck className="size-4 text-[#2E7D4F]" />
+                    </div>
+                    <b className="mt-1.5 block text-2xl font-bold tabular-nums text-[#2E7D4F]">+{unitsIn}</b>
+                    <span className="text-[11px] text-[#8A7060]">Received &amp; added</span>
+                  </div>
+                </div>
+
+                {/* Activity Log Card */}
+                <section className="rounded-2xl border border-[#F0E4D2] bg-white p-4 shadow-[0_1px_2px_rgba(58,36,24,0.04)]">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          ["all", `All (${events.length})`],
+                          ["sale", "Sales"],
+                          ["restock", "Restocks"],
+                          ["adjust", "Adjustments"],
+                          ["ops", "Clearance & POs"],
+                        ] as const
+                      ).map(([id, label]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => setLogFilter(id)}
+                          className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                            logFilter === id
+                              ? "border-[#A8421A] bg-[#A8421A] text-white"
+                              : "border-[#EADBC6] bg-[#FCF9F4] text-[#3A2418] hover:bg-[#FBE3CF]/50"
                           }`}
                         >
-                          {ev.delta > 0 ? `+${ev.delta}` : ev.delta}
-                        </span>
-                      )}
-                      <span className="min-w-[38px] text-right text-[11px] text-[#8A7060]">{ev.time}</span>
+                          {label}
+                        </button>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          downloadCsv(
+                            "tikk-stock-activity.csv",
+                            ["Time", "Type", "Description", "Delta"],
+                            filteredEvents.map((e) => [e.time, e.type, e.txt, e.delta]),
+                            "Activity Audit CSV",
+                          )
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[#EADBC6] bg-white px-3 py-1.5 text-xs font-semibold text-[#3A2418] hover:bg-[#FFF8EE]"
+                      >
+                        <Download className="size-3.5" /> Export Log
+                      </button>
+                      {events.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEvents([]);
+                            showToast("Activity log cleared");
+                          }}
+                          className="rounded-full border border-[#F5C2BC] bg-white px-3 py-1.5 text-xs font-semibold text-[#C0392B] hover:bg-[#FBE1DD]"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {filteredEvents.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#EADBC6] bg-[#FCF9F4] py-8 text-center">
+                      <History className="mb-1.5 size-6 text-[#C9B8A4]" />
+                      <p className="text-xs font-medium text-[#8A7060]">No matching activity events</p>
+                    </div>
+                  ) : (
+                    <div className="max-h-[540px] divide-y divide-[#F5EBDB] overflow-y-auto pr-1">
+                      {filteredEvents.map((ev) => {
+                        const isPositive = ev.delta > 0 || ev.type === "restock" || ev.type === "po";
+                        const isClearance = ev.type === "clearance";
+                        const isDelete = ev.type === "delete";
+                        return (
+                          <div key={ev.id} className="flex items-center gap-3 py-2.5">
+                            <span
+                              className={`grid size-8 shrink-0 place-items-center rounded-xl ${
+                                isDelete
+                                  ? "bg-[#FBE1DD] text-[#C0392B]"
+                                  : isPositive
+                                    ? "bg-[#E3F0DA] text-[#2E7D4F]"
+                                    : isClearance
+                                      ? "bg-[#FFF0D0] text-[#B7791F]"
+                                      : "bg-[#FBE3CF] text-[#A8421A]"
+                              }`}
+                            >
+                              {ev.type === "sale" ? (
+                                <ShoppingCart className="size-4" />
+                              ) : ev.type === "restock" || ev.type === "po" ? (
+                                <Truck className="size-4" />
+                              ) : (
+                                <SlidersHorizontal className="size-4" />
+                              )}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium text-[#3A2418]">{ev.txt}</p>
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#8A7060]">
+                                {ev.type}
+                              </span>
+                            </div>
+                            {ev.delta !== 0 && (
+                              <span
+                                className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold tabular-nums ${
+                                  ev.delta > 0 ? "bg-[#E3F0DA] text-[#2E7D4F]" : "bg-[#FFF0D0] text-[#B7791F]"
+                                }`}
+                              >
+                                {ev.delta > 0 ? `+${ev.delta}` : ev.delta}
+                              </span>
+                            )}
+                            <span className="min-w-[46px] text-right font-mono text-[11px] text-[#8A7060]">{ev.time}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              </div>
+            );
+          })()}
         </div>
       </main>
 
